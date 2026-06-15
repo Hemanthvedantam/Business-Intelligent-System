@@ -9,6 +9,7 @@ from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.core.config import settings
+import bcrypt
 
 # This tells passlib to use bcrypt for hashing passwords
 # bcrypt is the industry standard — never store plain text passwords
@@ -18,15 +19,13 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds
 bearer_scheme = HTTPBearer()
 
 
-def hash_password(plain_password: str) -> str:
-    # Turns "mypassword123" into a long unreadable hash
-    # The hash is what gets saved in the database
-    return pwd_context.hash(plain_password)
+import bcrypt
 
+def hash_password(plain_password: str) -> str:
+    return bcrypt.hashpw(plain_password[:72].encode(), bcrypt.gensalt()).decode()
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    # Checks if the password the user typed matches the stored hash
-    return pwd_context.verify(plain_password, hashed_password)
+    return bcrypt.checkpw(plain_password[:72].encode(), hashed_password.encode())
 
 
 def create_access_token(user_id: int, email: str) -> str:

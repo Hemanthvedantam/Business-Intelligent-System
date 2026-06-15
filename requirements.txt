@@ -9,7 +9,7 @@ langchain-google-genai
 google-generativeai
 numpy
 pandas
-passlib[bcrypt]
+bcrypt
 protobuf
 pydantic
 pydantic-settings
