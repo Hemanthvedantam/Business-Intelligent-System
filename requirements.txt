@@ -24,7 +24,6 @@ structlog
 openpyxl
 email-validator
 aiosqlite
-abc
 app
 asyncio
 datetime
