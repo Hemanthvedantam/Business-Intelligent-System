@@ -16,8 +16,7 @@ class Settings(BaseSettings):
 
     # --- MySQL database ---
     # Replace yourpassword with your actual MySQL password
-    MYSQL_URL: str = "sqlite+aiosqlite:///D:/Business Intelligent System/data/abip.db"
-
+    MYSQL_URL: str = "sqlite+aiosqlite:///./data/abip.db"
     # --- JWT token settings ---
     # This secret key is used to sign login tokens — keep it private
     JWT_SECRET_KEY: str = "change-this-to-something-long-and-random"

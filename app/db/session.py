@@ -9,6 +9,12 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
+import os
+
+# Ensure the data directory exists before SQLite tries to open the db file
+os.makedirs("data", exist_ok=True)
+
+
 # The engine is the actual connection to MySQL
 # pool_size = keep 10 connections open at once
 # pool_recycle = restart connections every hour to avoid MySQL timeouts
