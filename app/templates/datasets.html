@@ -1,0 +1,1268 @@
+{% extends "base.html" %}
+{% block title %}Datasets — ABIP{% endblock %}
+{% block breadcrumb %}Datasets{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-secondary btn-sm" onclick="loadAll()">
+    <i class="ti ti-refresh" aria-hidden="true"></i> Refresh
+</button>
+<button class="btn btn-primary btn-sm" onclick="openUploadModal()">
+    <i class="ti ti-upload" aria-hidden="true"></i> Upload Dataset
+</button>
+<input type="file" id="file-input" accept=".csv,.xlsx,.xls,.parquet"
+       style="display:none" onchange="uploadFile(this)">
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Upload Modal ── -->
+<div id="upload-modal" style="display:none; position:fixed; inset:0; z-index:999;
+     background:rgba(0,0,0,0.65); backdrop-filter:blur(6px);
+     align-items:center; justify-content:center;">
+    <div style="background:var(--bg-card); border:1px solid var(--border);
+         border-radius:var(--radius-lg); padding:28px; width:500px; max-width:92vw;
+         box-shadow:var(--shadow-lg); animation:scaleIn 0.22s ease;">
+
+        <div class="flex-between mb-20">
+            <div>
+                <div style="font-size:17px; font-weight:700; color:var(--text);">Upload Dataset</div>
+                <div style="font-size:12.5px; color:var(--text-3); margin-top:2px;">CSV, Excel, or Parquet — max 100MB</div>
+            </div>
+            <button onclick="closeUploadModal()" style="background:none;border:none;color:var(--text-3);
+                cursor:pointer;font-size:20px;line-height:1;padding:4px;border-radius:6px;"
+                aria-label="Close">✕</button>
+        </div>
+
+        <div class="upload-zone" id="upload-zone"
+             ondragover="handleDragOver(event)" ondragleave="handleDragLeave()"
+             ondrop="handleDrop(event)" onclick="document.getElementById('file-input').click()">
+            <div class="upload-zone-icon"><i class="ti ti-cloud-upload" aria-hidden="true"></i></div>
+            <div class="upload-zone-title">Drop your file here</div>
+            <div class="upload-zone-sub">or click to browse</div>
+            <div class="upload-formats mt-8">
+                <span class="ext-badge ext-csv">CSV</span>
+                <span class="ext-badge ext-xlsx">XLSX</span>
+                <span class="ext-badge ext-parquet">Parquet</span>
+            </div>
+        </div>
+
+        <div id="upload-progress" style="display:none;" class="mt-12">
+            <div class="flex-center gap-8 mb-8">
+                <div class="spinner"></div>
+                <span class="text-muted" style="font-size:13px;" id="upload-progress-text">Uploading...</span>
+            </div>
+            <div class="quality-bar">
+                <div class="quality-bar-fill high" id="upload-bar" style="width:0%;transition:width 0.4s;"></div>
+            </div>
+        </div>
+        <div id="upload-result" style="display:none;" class="mt-12"></div>
+    </div>
+</div>
+
+<!-- ── Page Header ── -->
+<div class="page-header mb-24 anim-slide">
+    <div>
+        <div class="page-title">Datasets</div>
+        <div class="page-subtitle" id="datasets-subtitle">Loading your datasets...</div>
+    </div>
+    <div class="page-actions">
+        <div style="display:flex; align-items:center; gap:8px; padding:6px 14px;
+             background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius);
+             font-size:12.5px; color:var(--text-3);">
+            <i class="ti ti-database" style="color:var(--blue);" aria-hidden="true"></i>
+            <span id="storage-used">—</span> used
+        </div>
+    </div>
+</div>
+
+<!-- ── Summary KPI strip ── -->
+<div class="kpi-grid mb-24 anim-slide">
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <div class="kpi-icon blue"><i class="ti ti-files" aria-hidden="true"></i></div>
+        </div>
+        <div class="kpi-value" id="kpi-total">—</div>
+        <div class="kpi-label">Total Datasets</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <div class="kpi-icon green"><i class="ti ti-circle-check" aria-hidden="true"></i></div>
+        </div>
+        <div class="kpi-value" id="kpi-healthy">—</div>
+        <div class="kpi-label">Analysis Ready</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <div class="kpi-icon amber"><i class="ti ti-alert-triangle" aria-hidden="true"></i></div>
+        </div>
+        <div class="kpi-value" id="kpi-issues">—</div>
+        <div class="kpi-label">Need Attention</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-top">
+            <div class="kpi-icon purple"><i class="ti ti-database" aria-hidden="true"></i></div>
+        </div>
+        <div class="kpi-value" id="kpi-size">—</div>
+        <div class="kpi-label">Total Size</div>
+    </div>
+</div>
+
+<!-- ── Main grid: file list + profile panel ── -->
+<div class="grid-2 anim-slide" id="main-grid" style="align-items:start; gap:20px;">
+
+    <!-- LEFT: Dataset list -->
+    <div style="display:flex; flex-direction:column; gap:12px;">
+
+        <!-- Search + sort bar -->
+        <div class="card" style="padding:14px 18px;">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <div style="position:relative; flex:1;">
+                    <i class="ti ti-search" aria-hidden="true" style="position:absolute;
+                       left:10px; top:50%; transform:translateY(-50%);
+                       color:var(--text-3); font-size:14px; pointer-events:none;"></i>
+                    <input id="search-input" type="text" placeholder="Search datasets..."
+                           class="form-input" style="padding-left:32px;"
+                           oninput="filterFiles()" />
+                </div>
+                <select id="sort-select" class="form-input" style="width:140px;" onchange="filterFiles()">
+                    <option value="recent">Most Recent</option>
+                    <option value="name">Name A–Z</option>
+                    <option value="size">Largest First</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- File cards -->
+        <div id="file-list">
+            <div class="card" style="padding:48px; text-align:center;">
+                <div class="spinner spinner-lg" style="margin:0 auto 16px;"></div>
+                <div class="text-dim">Loading datasets...</div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- RIGHT: Profile panel with tabs -->
+    <div class="card anim-slide delay-1" id="profile-panel" style="position:sticky; top:80px;">
+
+        <!-- Panel header -->
+        <div class="card-header" style="padding-bottom:0; margin-bottom:0;">
+            <div>
+                <div class="card-title">Dataset Profile</div>
+                <div class="card-subtitle" id="profile-subtitle">Select a dataset to inspect</div>
+            </div>
+            <span class="badge badge-blue" id="profile-score-badge" style="display:none;">—</span>
+        </div>
+
+        <!-- Tab bar -->
+        <div id="profile-tabs" style="display:none; border-bottom:1px solid var(--border);
+             margin:12px -20px 0; padding:0 20px;">
+            <div style="display:flex; gap:0;">
+                <button class="profile-tab active" data-tab="profile" onclick="switchProfileTab('profile')">
+                    <i class="ti ti-chart-bar" aria-hidden="true"></i> Profile
+                </button>
+                <button class="profile-tab" data-tab="lineage" onclick="switchProfileTab('lineage')">
+                    <i class="ti ti-git-merge" aria-hidden="true"></i> Lineage
+                </button>
+            </div>
+        </div>
+
+        <!-- Tab content -->
+        <div id="profile-content" style="padding-top:16px;">
+            <div style="text-align:center; padding:56px 0;">
+                <i class="ti ti-chart-dots" style="font-size:48px; color:var(--border);
+                   display:block; margin-bottom:16px;" aria-hidden="true"></i>
+                <div style="font-size:14px; font-weight:600; color:var(--text-2); margin-bottom:6px;">
+                    No dataset selected
+                </div>
+                <div class="text-dim" style="font-size:13px;">
+                    Click any dataset on the left to see its quality profile
+                </div>
+            </div>
+        </div>
+
+        <!-- Lineage tab content (hidden by default) -->
+        <div id="lineage-content" style="display:none; padding-top:16px;"></div>
+
+    </div>
+
+</div>
+
+<style>
+/* ── File card ── */
+.file-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px 18px;
+    cursor: pointer;
+    transition: all 0.18s;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    animation: slideIn 0.25s ease both;
+}
+.file-card:hover { border-color: var(--border-hover); box-shadow: var(--shadow); }
+.file-card.active { border-color: var(--blue); background: var(--blue-light); }
+
+.file-card-icon {
+    width: 40px; height: 40px;
+    border-radius: var(--radius);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+.file-card-info { flex: 1; min-width: 0; }
+.file-card-name {
+    font-size: 13.5px; font-weight: 600; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.file-card-meta { font-size: 11.5px; color: var(--text-3); margin-top: 3px; }
+.file-card-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+/* ── Profile tabs ── */
+.profile-tab {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 8px 14px;
+    background: none; border: none; border-bottom: 2px solid transparent;
+    font-family: 'Inter', sans-serif; font-size: 12.5px; font-weight: 500;
+    color: var(--text-3); cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+    margin-bottom: -1px;
+}
+.profile-tab:hover { color: var(--text-2); }
+.profile-tab.active {
+    color: var(--blue-text);
+    border-bottom-color: var(--blue);
+    font-weight: 600;
+}
+.profile-tab i { font-size: 13px; }
+
+/* ── Profile sections ── */
+.profile-stat-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px;
+}
+.profile-stat {
+    text-align: center; padding: 12px 8px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.profile-stat-value {
+    font-size: 20px; font-weight: 700; letter-spacing: -0.02em;
+}
+.profile-stat-label { font-size: 10.5px; color: var(--text-3); margin-top: 2px; font-weight: 500; }
+
+.issue-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 9px; border-radius: 20px; font-size: 11.5px; font-weight: 600;
+}
+
+/* ── AI Recommendation Panel ── */
+.ai-rec-panel {
+    background: linear-gradient(135deg, rgba(99,102,241,0.07) 0%, rgba(56,189,248,0.05) 100%);
+    border: 1px solid rgba(99,102,241,0.2);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    position: relative;
+    overflow: hidden;
+}
+.ai-rec-panel::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: linear-gradient(180deg, var(--indigo, #6366F1), var(--cyan, #06B6D4));
+    border-radius: 2px 0 0 2px;
+}
+.ai-rec-header { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
+.ai-rec-icon {
+    width: 22px; height: 22px;
+    background: rgba(99,102,241,0.15);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; color: var(--indigo, #6366F1);
+    flex-shrink: 0;
+}
+.ai-rec-title {
+    font-size: 11px; font-weight: 700;
+    color: var(--indigo, #6366F1);
+    text-transform: uppercase; letter-spacing: 0.07em; flex: 1;
+}
+.ai-rec-body { font-size: 12.5px; color: var(--text-2); line-height: 1.6; }
+.ai-rec-actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.ai-rec-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 10px; border-radius: 20px;
+    background: rgba(99,102,241,0.1);
+    border: 1px solid rgba(99,102,241,0.2);
+    color: var(--indigo, #6366F1);
+    font-size: 11.5px; font-weight: 600;
+    cursor: pointer; transition: all 0.15s; text-decoration: none;
+}
+.ai-rec-chip:hover { background: rgba(99,102,241,0.18); border-color: rgba(99,102,241,0.35); }
+
+/* ═══════════════════════════════════════════════
+   UPGRADE 10 — DATA LINEAGE STYLES
+═══════════════════════════════════════════════ */
+
+/* Outer wrapper */
+.lineage-wrap {
+    padding: 4px 0 8px;
+}
+
+/* Legend row */
+.lineage-legend {
+    display: flex; align-items: center; gap: 16px;
+    flex-wrap: wrap; margin-bottom: 16px;
+    padding: 8px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+.lineage-legend-item {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 11px; font-weight: 600; color: var(--text-3);
+}
+.lineage-legend-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+}
+
+/* SVG canvas */
+#lineage-svg {
+    width: 100%;
+    overflow: visible;
+    display: block;
+}
+
+/* Node groups */
+.lineage-node-group { cursor: default; }
+.lineage-node-rect {
+    transition: filter 0.2s;
+}
+.lineage-node-group:hover .lineage-node-rect {
+    filter: brightness(0.96) drop-shadow(0 2px 6px rgba(0,0,0,0.10));
+}
+
+/* Tooltip */
+.lineage-tooltip {
+    position: absolute;
+    background: var(--text);
+    color: #fff;
+    font-size: 11.5px;
+    font-weight: 500;
+    padding: 6px 10px;
+    border-radius: var(--radius);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 100;
+    max-width: 220px;
+    line-height: 1.5;
+    white-space: pre-line;
+}
+.lineage-tooltip.visible { opacity: 1; }
+
+/* Detail panel below graph */
+.lineage-detail {
+    margin-top: 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    animation: slideIn 0.2s ease;
+}
+.lineage-detail-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+}
+.lineage-detail-icon {
+    width: 26px; height: 26px; border-radius: var(--radius-sm);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; flex-shrink: 0;
+}
+.lineage-detail-title { font-size: 13px; font-weight: 600; color: var(--text); flex: 1; }
+.lineage-detail-body {
+    padding: 12px 14px;
+    font-size: 12.5px; color: var(--text-2); line-height: 1.65;
+}
+.lineage-detail-row {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border);
+}
+.lineage-detail-row:last-child { border-bottom: none; }
+.lineage-detail-key {
+    font-size: 11px; font-weight: 600; color: var(--text-3);
+    text-transform: uppercase; letter-spacing: 0.05em;
+    min-width: 80px; padding-top: 2px;
+}
+.lineage-detail-val { color: var(--text-2); font-size: 12.5px; }
+
+@media (max-width: 900px) {
+    #main-grid { grid-template-columns: 1fr !important; }
+    #profile-panel { position: static !important; }
+}
+</style>
+
+<!-- Lineage tooltip (shared, positioned by JS) -->
+<div class="lineage-tooltip" id="lineage-tooltip"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+requireAuth();
+
+let allFiles   = [];
+let activeFile = null;
+let activeProfileData = null; // cache last profile for lineage tab
+
+window.onload = loadAll;
+
+/* ─────────────────────────────────────────
+   LOAD
+───────────────────────────────────────── */
+async function loadAll() {
+    const res = await apiFetch('/files/list');
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    allFiles = data.files;
+
+    let totalKb = 0;
+    allFiles.forEach(f => { totalKb += f.size_kb; });
+
+    document.getElementById('kpi-total').textContent   = allFiles.length;
+    document.getElementById('kpi-healthy').textContent = allFiles.length;
+    document.getElementById('kpi-issues').textContent  = 0;
+    document.getElementById('kpi-size').textContent    = formatSize(totalKb);
+    document.getElementById('storage-used').textContent = formatSize(totalKb);
+    document.getElementById('datasets-subtitle').textContent =
+        `${allFiles.length} dataset${allFiles.length !== 1 ? 's' : ''} in your workspace`;
+
+    // Update nav badge
+    const badge = document.getElementById('nav-datasets-badge');
+    if (badge) badge.textContent = allFiles.length || '';
+
+    renderFileList(allFiles);
+
+    if (allFiles.length > 0 && !activeFile) {
+        const saved  = localStorage.getItem('active_file');
+        const target = saved && allFiles.find(f => f.filename === saved)
+            ? saved : allFiles[0].filename;
+        const idx = allFiles.findIndex(f => f.filename === target);
+        selectFile(target, idx);
+    }
+}
+
+/* ─────────────────────────────────────────
+   PROFILE TABS
+───────────────────────────────────────── */
+function switchProfileTab(tab) {
+    document.querySelectorAll('.profile-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+    document.getElementById('profile-content').style.display  = tab === 'profile'  ? 'block' : 'none';
+    document.getElementById('lineage-content').style.display  = tab === 'lineage'  ? 'block' : 'none';
+
+    if (tab === 'lineage' && activeProfileData) {
+        renderLineage(activeProfileData);
+    }
+}
+
+/* ─────────────────────────────────────────
+   RENDER FILE LIST
+───────────────────────────────────────── */
+function renderFileList(files) {
+    const wrap = document.getElementById('file-list');
+
+    if (files.length === 0) {
+        wrap.innerHTML = `
+            <div class="card" style="padding:56px; text-align:center;">
+                <i class="ti ti-database-off" style="font-size:48px; color:var(--border);
+                   display:block; margin-bottom:14px;" aria-hidden="true"></i>
+                <div style="font-size:15px; font-weight:600; color:var(--text-2); margin-bottom:6px;">
+                    No datasets yet
+                </div>
+                <div class="text-dim" style="font-size:13px; margin-bottom:18px;">
+                    Upload a CSV, Excel, or Parquet file to get started
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="openUploadModal()">
+                    <i class="ti ti-upload" aria-hidden="true"></i> Upload first dataset
+                </button>
+            </div>`;
+        return;
+    }
+
+    const extColors = {
+        '.csv':     { bg: 'var(--green-light)',  color: 'var(--green-text)',  icon: 'ti-file-type-csv' },
+        '.xlsx':    { bg: 'var(--blue-light)',   color: 'var(--blue)',        icon: 'ti-file-spreadsheet' },
+        '.xls':     { bg: 'var(--blue-light)',   color: 'var(--blue)',        icon: 'ti-file-spreadsheet' },
+        '.parquet': { bg: 'var(--amber-light)',  color: 'var(--amber-text)', icon: 'ti-database' },
+    };
+
+    wrap.innerHTML = files.map((f, idx) => {
+        const style    = extColors[f.extension] || { bg: 'var(--bg-hover)', color: 'var(--text-2)', icon: 'ti-file' };
+        const isActive = activeFile === f.filename;
+        const uploadDate = f.uploaded_at
+            ? new Date(f.uploaded_at * 1000).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' })
+            : '—';
+
+        return `
+        <div class="file-card ${isActive ? 'active' : ''}" id="card-${idx}"
+             onclick="selectFile('${f.filename}', ${idx})"
+             style="animation-delay:${idx * 0.04}s;">
+            <div class="file-card-icon" style="background:${style.bg}; color:${style.color};">
+                <i class="ti ${style.icon}" aria-hidden="true"></i>
+            </div>
+            <div class="file-card-info">
+                <div class="file-card-name" title="${f.filename}">${f.filename}</div>
+                <div class="file-card-meta">
+                    <span class="ext-badge ext-${f.extension.replace('.','')}">${f.extension.replace('.','').toUpperCase()}</span>
+                    <span style="margin-left:6px;">${formatSize(f.size_kb)}</span>
+                    <span style="margin-left:6px; color:var(--text-4);">•</span>
+                    <span style="margin-left:6px;">Uploaded ${uploadDate}</span>
+                </div>
+            </div>
+            <div class="file-card-actions" onclick="event.stopPropagation()">
+                <button class="btn btn-primary btn-sm" style="padding:5px 10px;"
+                    onclick="investigateFile('${f.filename}')" title="Investigate">
+                    <i class="ti ti-search" aria-hidden="true"></i>
+                </button>
+                <a href="/explorer?file=${encodeURIComponent(f.filename)}"
+                   class="btn btn-secondary btn-sm" style="padding:5px 10px;" title="Explore data">
+                    <i class="ti ti-table" aria-hidden="true"></i>
+                </a>
+                <button class="btn btn-ghost btn-sm btn-icon" title="Delete"
+                    onclick="confirmDelete('${f.filename}', this)">
+                    <i class="ti ti-trash" style="color:var(--red-text);" aria-hidden="true"></i>
+                </button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+/* ─────────────────────────────────────────
+   FILTER / SORT
+───────────────────────────────────────── */
+function filterFiles() {
+    const q    = document.getElementById('search-input').value.toLowerCase();
+    const sort = document.getElementById('sort-select').value;
+    let files = allFiles.filter(f => f.filename.toLowerCase().includes(q));
+    if (sort === 'name')   files = [...files].sort((a, b) => a.filename.localeCompare(b.filename));
+    if (sort === 'size')   files = [...files].sort((a, b) => b.size_kb - a.size_kb);
+    if (sort === 'recent') files = [...files].sort((a, b) => b.uploaded_at - a.uploaded_at);
+    renderFileList(files);
+}
+
+/* ─────────────────────────────────────────
+   SELECT FILE → PROFILE
+───────────────────────────────────────── */
+async function selectFile(filename, idx) {
+    activeFile = filename;
+    activeProfileData = null;
+
+    document.querySelectorAll('.file-card').forEach(c => c.classList.remove('active'));
+    const card = document.getElementById(`card-${idx}`);
+    if (card) card.classList.add('active');
+
+    localStorage.setItem('active_file', filename);
+
+    document.getElementById('profile-subtitle').textContent = filename;
+    document.getElementById('profile-score-badge').style.display = 'none';
+    document.getElementById('profile-tabs').style.display = 'none';
+
+    // Reset to profile tab
+    switchProfileTab('profile');
+
+    document.getElementById('profile-content').innerHTML = `
+        <div style="text-align:center; padding:40px;">
+            <div class="spinner spinner-lg" style="margin:0 auto 14px;"></div>
+            <div class="text-dim">Profiling dataset...</div>
+        </div>`;
+    document.getElementById('lineage-content').innerHTML = '';
+
+    const res = await apiFetch(`/files/profile/${filename}`);
+    if (!res || !res.ok) {
+        document.getElementById('profile-content').innerHTML = `
+            <div class="alert alert-error mt-12">
+                <i class="ti ti-alert-circle alert-icon" aria-hidden="true"></i>
+                <span>Could not load profile for this file.</span>
+            </div>`;
+        return;
+    }
+    const report = await res.json();
+    activeProfileData = report;
+
+    // Show tabs now that we have data
+    document.getElementById('profile-tabs').style.display = 'block';
+
+    renderProfile(report);
+}
+
+/* ─────────────────────────────────────────
+   BUILD AI RECOMMENDATION
+───────────────────────────────────────── */
+function buildAIRecommendation(r) {
+    const score       = r.quality_score ?? 0;
+    const missingCols = Object.entries(r.missing_values || {});
+    const outlierCols = Object.keys(r.outliers || {});
+    const dupes       = r.duplicate_rows || 0;
+    const totalRows   = r.total_rows || 0;
+    const numericCols = (r.columns || []).filter(c =>
+        ['float64','int64','int32','float32'].includes(c.type));
+    const catCols = (r.columns || []).filter(c => c.type === 'object');
+
+    let topAction = '', chips = [], urgency = 'info';
+
+    if (score < 50) {
+        urgency = 'critical';
+        const worst = missingCols.sort((a,b) => b[1] - a[1])[0];
+        topAction = worst
+            ? `<strong>${worst[0]}</strong> is missing ${worst[1]} values (${((worst[1]/totalRows)*100).toFixed(0)}% of rows) — this column will skew any analysis. Clean or exclude it before investigating.`
+            : `Quality score is ${score}/100. Significant data issues detected — review before running analysis.`;
+        chips = [
+            { label: 'View in Explorer', href: `/explorer?file=${encodeURIComponent(r.filename)}` },
+            { label: 'Run NLP Assessment', href: `/nlp?file=${encodeURIComponent(r.filename)}` },
+        ];
+    } else if (dupes > 0 && score < 80) {
+        urgency = 'warning';
+        const dupePct = ((dupes / totalRows) * 100).toFixed(1);
+        topAction = `<strong>${dupes} duplicate rows</strong> (${dupePct}% of data) will inflate aggregates and skew trend analysis. Deduplicate before investigating.`;
+        chips = [
+            { label: 'Investigate anyway', onclick: `investigateFile('${r.filename}')` },
+            { label: 'Explore data', href: `/explorer?file=${encodeURIComponent(r.filename)}` },
+        ];
+    } else if (outlierCols.length > 0) {
+        urgency = 'warning';
+        const top2 = outlierCols.slice(0, 2).join(', ');
+        topAction = `Outliers detected in <strong>${top2}</strong>${outlierCols.length > 2 ? ` +${outlierCols.length - 2} more` : ''}. These may represent real anomalies worth investigating or data entry errors.`;
+        chips = [
+            { label: 'Investigate outliers', onclick: `startOutlierInvestigation('${r.filename}')` },
+            { label: 'View in Insights', href: `/insights` },
+        ];
+    } else if (score >= 80) {
+        urgency = 'info';
+        if (numericCols.length >= 2 && catCols.length >= 1) {
+            topAction = `Dataset is clean and ready. <strong>${numericCols.length} numeric</strong> and <strong>${catCols.length} categorical</strong> columns detected — good candidate for correlation and segment analysis.`;
+        } else if (numericCols.length >= 2) {
+            topAction = `Dataset looks clean. <strong>${numericCols.length} numeric columns</strong> available — run a correlation or trend investigation to find key drivers.`;
+        } else {
+            topAction = `Dataset is clean and analysis-ready. Start an investigation to surface patterns and insights.`;
+        }
+        chips = [
+            { label: '⚡ Start Investigation', onclick: `investigateFile('${r.filename}')` },
+            { label: 'NLP Analysis', href: `/nlp?file=${encodeURIComponent(r.filename)}` },
+            { label: 'Advanced Insights', href: `/insights` },
+        ];
+    } else {
+        urgency = 'info';
+        topAction = `Quality score <strong>${score}/100</strong>. ${missingCols.length > 0 ? `${missingCols.length} columns have missing values.` : ''} Proceed with awareness of data gaps.`;
+        chips = [
+            { label: 'Investigate', onclick: `investigateFile('${r.filename}')` },
+            { label: 'View in Insights', href: `/insights` },
+        ];
+    }
+
+    const borderColor = urgency === 'critical' ? 'rgba(239,68,68,0.3)'
+                      : urgency === 'warning'  ? 'rgba(245,158,11,0.25)'
+                      : 'rgba(99,102,241,0.2)';
+    const iconColor   = urgency === 'critical' ? 'var(--red-text)'
+                      : urgency === 'warning'  ? 'var(--amber-text)'
+                      : 'var(--indigo, #6366F1)';
+    const icon        = urgency === 'critical' ? 'ti-alert-triangle'
+                      : urgency === 'warning'  ? 'ti-info-circle'
+                      : 'ti-sparkles';
+    const bgGrad      = urgency === 'critical'
+        ? 'linear-gradient(135deg, rgba(239,68,68,0.06) 0%, rgba(239,68,68,0.02) 100%)'
+        : urgency === 'warning'
+        ? 'linear-gradient(135deg, rgba(245,158,11,0.07) 0%, rgba(245,158,11,0.02) 100%)'
+        : 'linear-gradient(135deg, rgba(99,102,241,0.07) 0%, rgba(56,189,248,0.05) 100%)';
+
+    const chipsHTML = chips.map(c => {
+        const chipStyle = `color:${iconColor};background:${urgency==='critical'?'rgba(239,68,68,0.1)':urgency==='warning'?'rgba(245,158,11,0.1)':'rgba(99,102,241,0.1)'};border-color:${borderColor};`;
+        if (c.href) return `<a href="${c.href}" class="ai-rec-chip" style="${chipStyle}"><i class="ti ti-arrow-right" aria-hidden="true"></i> ${c.label}</a>`;
+        return `<button class="ai-rec-chip" onclick="${c.onclick}" style="${chipStyle}"><i class="ti ti-arrow-right" aria-hidden="true"></i> ${c.label}</button>`;
+    }).join('');
+
+    return `
+    <div class="ai-rec-panel" style="background:${bgGrad}; border-color:${borderColor};">
+        <div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:${iconColor};border-radius:2px 0 0 2px;"></div>
+        <div class="ai-rec-header">
+            <div class="ai-rec-icon" style="background:${urgency==='critical'?'rgba(239,68,68,0.15)':urgency==='warning'?'rgba(245,158,11,0.15)':'rgba(99,102,241,0.15)'};color:${iconColor};">
+                <i class="ti ${icon}" aria-hidden="true"></i>
+            </div>
+            <div class="ai-rec-title" style="color:${iconColor};">AI Recommendation</div>
+        </div>
+        <div class="ai-rec-body">${topAction}</div>
+        ${chips.length ? `<div class="ai-rec-actions">${chipsHTML}</div>` : ''}
+    </div>`;
+}
+
+function renderProfile(r) {
+    const score      = r.quality_score ?? 0;
+    const scoreClass = score >= 80 ? 'high' : score >= 50 ? 'medium' : 'low';
+    const scoreColor = score >= 80 ? 'var(--green-text)' : score >= 50 ? 'var(--amber-text)' : 'var(--red-text)';
+    const badgeCls   = score >= 80 ? 'badge-green' : score >= 50 ? 'badge-amber' : 'badge-red';
+
+    document.getElementById('profile-score-badge').textContent  = `${score}/100`;
+    document.getElementById('profile-score-badge').className    = `badge ${badgeCls}`;
+    document.getElementById('profile-score-badge').style.display = 'inline-flex';
+
+    const numericCols  = (r.columns || []).filter(c => ['float64','int64','int32','float32'].includes(c.type));
+    const catCols      = (r.columns || []).filter(c => c.type === 'object');
+    const missingCount = Object.keys(r.missing_values || {}).length;
+    const outlierCount = Object.keys(r.outliers || {}).length;
+    const aiRecHTML    = buildAIRecommendation(r);
+
+    document.getElementById('profile-content').innerHTML = `
+        <div class="profile-stat-grid">
+            <div class="profile-stat">
+                <div class="profile-stat-value" style="color:var(--cyan);">${(r.total_rows || 0).toLocaleString()}</div>
+                <div class="profile-stat-label">Rows</div>
+            </div>
+            <div class="profile-stat">
+                <div class="profile-stat-value" style="color:var(--indigo);">${r.total_columns || 0}</div>
+                <div class="profile-stat-label">Columns</div>
+            </div>
+            <div class="profile-stat">
+                <div class="profile-stat-value" style="color:${scoreColor};">${score}</div>
+                <div class="profile-stat-label">Quality</div>
+            </div>
+        </div>
+
+        <div style="margin-bottom:14px;">
+            <div class="flex-between mb-4">
+                <span style="font-size:11px; font-weight:600; color:var(--text-3); text-transform:uppercase; letter-spacing:0.06em;">Quality Score</span>
+                <span style="font-size:12px; font-weight:700; color:${scoreColor};">${score}/100</span>
+            </div>
+            <div class="quality-bar">
+                <div class="quality-bar-fill ${scoreClass}" style="width:${score}%;"></div>
+            </div>
+        </div>
+
+        ${aiRecHTML}
+
+        <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px;">
+            ${numericCols.length  ? `<span class="issue-pill" style="background:var(--cyan-dim);color:var(--cyan);"><i class="ti ti-123" aria-hidden="true"></i> ${numericCols.length} numeric</span>` : ''}
+            ${catCols.length      ? `<span class="issue-pill" style="background:var(--amber-dim);color:var(--amber-text);"><i class="ti ti-tag" aria-hidden="true"></i> ${catCols.length} categorical</span>` : ''}
+            ${r.duplicate_rows > 0 ? `<span class="issue-pill" style="background:var(--red-dim);color:var(--red-text);"><i class="ti ti-copy" aria-hidden="true"></i> ${r.duplicate_rows} dupes</span>` : ''}
+            ${missingCount > 0    ? `<span class="issue-pill" style="background:var(--amber-dim);color:var(--amber-text);"><i class="ti ti-alert-triangle" aria-hidden="true"></i> ${missingCount} missing</span>` : ''}
+            ${outlierCount > 0    ? `<span class="issue-pill" style="background:var(--purple-mid);color:var(--purple-text);"><i class="ti ti-chart-dots-3" aria-hidden="true"></i> ${outlierCount} outliers</span>` : ''}
+        </div>
+
+        ${r.issues && r.issues.length > 0 ? `
+        <div class="alert alert-warning" style="padding:9px 12px; margin-bottom:14px;">
+            <i class="ti ti-alert-triangle alert-icon" style="font-size:13px;" aria-hidden="true"></i>
+            <div style="font-size:12px;">${r.issues.join(' · ')}</div>
+        </div>` : `
+        <div class="alert alert-success" style="padding:9px 12px; margin-bottom:14px;">
+            <i class="ti ti-circle-check alert-icon" style="font-size:13px;" aria-hidden="true"></i>
+            <span style="font-size:12px;">Clean and analysis-ready</span>
+        </div>`}
+
+        <div style="margin-bottom:16px;">
+            <div style="font-size:11px; font-weight:600; color:var(--text-3); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px;">Columns</div>
+            <div style="display:flex; flex-direction:column; gap:4px; max-height:180px; overflow-y:auto;">
+                ${(r.columns || []).map(c => `
+                <div style="display:flex; align-items:center; justify-content:space-between;
+                     padding:5px 8px; background:var(--bg); border-radius:var(--radius-sm); font-size:12px;">
+                    <span style="color:var(--text-2); font-weight:500;">${c.name}</span>
+                    <span class="col-type ${c.type}">${c.type}</span>
+                </div>`).join('')}
+            </div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:8px;">
+            <button class="btn btn-primary w-full btn-sm" onclick="investigateFile('${r.filename}')">
+                <i class="ti ti-search" aria-hidden="true"></i> Investigate Dataset
+            </button>
+            <div style="display:flex; gap:8px;">
+                <a href="/explorer?file=${encodeURIComponent(r.filename)}"
+                   class="btn btn-secondary btn-sm" style="flex:1; justify-content:center;">
+                    <i class="ti ti-table" aria-hidden="true"></i> Explore
+                </a>
+                <a href="/nlp?file=${encodeURIComponent(r.filename)}"
+                   class="btn btn-secondary btn-sm" style="flex:1; justify-content:center;">
+                    <i class="ti ti-sparkles" aria-hidden="true"></i> AI Insights
+                </a>
+            </div>
+        </div>
+    `;
+}
+
+/* ═══════════════════════════════════════════════
+   UPGRADE 10 — DATA LINEAGE GRAPH RENDERER
+   Pure SVG — no external lib required.
+   Nodes: Upload → Raw File → Quality Check →
+          DuckDB Store → Analysis Ready →
+          Agent Pipeline → Reports/Insights
+   Edges animated with SVG stroke-dasharray.
+═══════════════════════════════════════════════ */
+
+function renderLineage(report) {
+    const container = document.getElementById('lineage-content');
+    if (!container) return;
+
+    const score        = report.quality_score ?? 0;
+    const hasIssues    = (report.issues || []).length > 0;
+    const missingCount = Object.keys(report.missing_values || {}).length;
+    const outlierCount = Object.keys(report.outliers || {}).length;
+    const dupes        = report.duplicate_rows || 0;
+    const ext          = (report.filename || '').split('.').pop().toUpperCase();
+    const rows         = (report.total_rows  || 0).toLocaleString();
+    const cols         = report.total_columns || 0;
+    const qualityPass  = score >= 50;
+
+    /* ── Node definitions ──
+       Each node: id, label, sublabel, icon (tabler char code), status, detail (tooltip), x, y
+       Layout: 2-column zigzag, flows top-to-bottom
+       status: 'done' | 'warning' | 'error' | 'active' | 'pending'
+    */
+    const STATUS_COLOR = {
+        done:    { fill: '#F0FDF4', stroke: '#22C55E', text: '#15803D', dot: '#22C55E' },
+        warning: { fill: '#FFFBEB', stroke: '#F59E0B', text: '#B45309', dot: '#F59E0B' },
+        error:   { fill: '#FEF2F2', stroke: '#EF4444', text: '#B91C1C', dot: '#EF4444' },
+        active:  { fill: '#EFF6FF', stroke: '#2563EB', text: '#1D4ED8', dot: '#2563EB' },
+        pending: { fill: '#F8FAFC', stroke: '#CBD5E1', text: '#94A3B8', dot: '#CBD5E1' },
+    };
+
+    /* Column grid: nodes placed on a 2-col stagger */
+    const W = 200, H = 56, GAP_X = 48, GAP_Y = 28;
+    const COL_L = 8, COL_R = W + GAP_X + 8;
+    const ROW = (n) => 8 + n * (H + GAP_Y);
+
+    const nodes = [
+        {
+            id: 'source', label: 'Upload Source', sub: `${ext} file`,
+            icon: '󰈔',  // file icon placeholder — we'll use text labels instead
+            status: 'done',
+            detail: `File: ${report.filename}\nFormat: ${ext}\nIngested via /files/upload`,
+            x: COL_L, y: ROW(0),
+        },
+        {
+            id: 'raw', label: 'Raw Storage', sub: `${rows} rows · ${cols} cols`,
+            status: 'done',
+            detail: `Stored in uploads directory.\nRows: ${rows} | Columns: ${cols}\nAvailable for DuckDB queries.`,
+            x: COL_R, y: ROW(0),
+        },
+        {
+            id: 'quality', label: 'Quality Check', sub: `Score: ${score}/100`,
+            status: score >= 80 ? 'done' : score >= 50 ? 'warning' : 'error',
+            detail: `Quality score: ${score}/100\nMissing cols: ${missingCount}\nOutlier cols: ${outlierCount}\nDuplicate rows: ${dupes}\n${score >= 50 ? 'Passed — can proceed' : 'Failed — review required'}`,
+            x: COL_L, y: ROW(1),
+        },
+        {
+            id: 'duckdb', label: 'DuckDB Store', sub: 'Queryable table',
+            status: qualityPass ? 'done' : 'warning',
+            detail: `Loaded into DuckDB in-process.\nSupports SQL via /files/query/{filename}\nUsed by Data Explorer & agents.`,
+            x: COL_R, y: ROW(1),
+        },
+        {
+            id: 'transform', label: 'Transformations', sub: hasIssues ? 'Issues flagged' : 'No transforms needed',
+            status: hasIssues ? 'warning' : 'done',
+            detail: hasIssues
+                ? `Issues: ${(report.issues || []).join('; ')}\nRoot causes: ${(report.root_cause_explanations || []).length} detected`
+                : 'No data issues found.\nDataset is clean and unmodified.',
+            x: COL_L, y: ROW(2),
+        },
+        {
+            id: 'ready', label: 'Analysis Ready', sub: qualityPass ? 'Available' : 'Blocked',
+            status: qualityPass ? 'active' : 'error',
+            detail: qualityPass
+                ? `Dataset cleared for analysis.\nQuality score ${score}/100 ≥ threshold (50).\nAll agents can access this dataset.`
+                : `Score ${score}/100 is below threshold (50).\nAnalysis blocked until issues resolved.`,
+            x: COL_R, y: ROW(2),
+        },
+        {
+            id: 'agents', label: 'Agent Pipeline', sub: 'Data Analyst · Forecast · RAG',
+            status: qualityPass ? 'done' : 'pending',
+            detail: `Agents: Data Analyst, Forecast, Root Cause,\nRecommend, RAG, Executive.\nTriggered via Investigations.`,
+            x: COL_L, y: ROW(3),
+        },
+        {
+            id: 'outputs', label: 'Reports & Insights', sub: 'Dashboards · Exports',
+            status: qualityPass ? 'done' : 'pending',
+            detail: `Outputs: Investigation reports, NLP insights,\nAdvanced analytics, Dashboard KPIs.\nAvailable in /reports and /insights.`,
+            x: COL_R, y: ROW(3),
+        },
+    ];
+
+    /* ── Edge definitions: from → to, with optional label ── */
+    const edges = [
+        { from: 'source',    to: 'raw',       label: 'ingest'     },
+        { from: 'raw',       to: 'quality',   label: 'validate'   },
+        { from: 'raw',       to: 'duckdb',    label: 'load'       },
+        { from: 'quality',   to: 'transform', label: 'analyze'    },
+        { from: 'duckdb',    to: 'transform', label: 'query'      },
+        { from: 'transform', to: 'ready',     label: 'stage'      },
+        { from: 'ready',     to: 'agents',    label: 'dispatch'   },
+        { from: 'agents',    to: 'outputs',   label: 'generate'   },
+    ];
+
+    /* ── SVG dimensions ── */
+    const svgW = W * 2 + GAP_X + 16 + 8;
+    const svgH = ROW(4) - GAP_Y + 8;
+
+    /* ── Build node map for edge routing ── */
+    const nodeMap = {};
+    nodes.forEach(n => { nodeMap[n.id] = n; });
+
+    /* ── Edge path: smart routing (horizontal middle-point) ── */
+    function edgePath(fromNode, toNode) {
+        const fx = fromNode.x + W;       // right edge of source
+        const fy = fromNode.y + H / 2;   // middle of source
+        const tx = toNode.x;             // left edge of target
+        const ty = toNode.y + H / 2;     // middle of target
+
+        // Same column? go straight down-right arc
+        if (Math.abs(fx - tx - W) < 5 || Math.abs(tx - fx + W) < 5) {
+            // cross-column horizontal edge
+            const mx = (fx + tx) / 2;
+            return `M ${fx} ${fy} C ${mx} ${fy}, ${mx} ${ty}, ${tx} ${ty}`;
+        }
+        // Same side? diagonal with bezier
+        const mx = (fx + tx) / 2;
+        return `M ${fx} ${fy} C ${mx} ${fy}, ${mx} ${ty}, ${tx} ${ty}`;
+    }
+
+    /* ── Icon map by node id ── */
+    const ICONS = {
+        source:    '⬆',
+        raw:       '📄',
+        quality:   '✓',
+        duckdb:    '🦆',
+        transform: '⚙',
+        ready:     '⚡',
+        agents:    '🤖',
+        outputs:   '📊',
+    };
+    const TABLER_ICONS = {
+        source:    'ti-cloud-upload',
+        raw:       'ti-file',
+        quality:   'ti-shield-check',
+        duckdb:    'ti-database',
+        transform: 'ti-settings',
+        ready:     'ti-circle-check',
+        agents:    'ti-cpu',
+        outputs:   'ti-chart-bar',
+    };
+
+    /* ── Generate unique IDs for SVG gradients/animations ── */
+    const uid = 'lg_' + Date.now();
+
+    /* ── Build SVG ── */
+    let edgeSVG = '';
+    edges.forEach((e, i) => {
+        const fn = nodeMap[e.from], tn = nodeMap[e.to];
+        if (!fn || !tn) return;
+        const d    = edgePath(fn, tn);
+        const col  = STATUS_COLOR[fn.status];
+        const dash = 6;
+        edgeSVG += `
+        <path class="lineage-edge" id="edge-${i}"
+              d="${d}"
+              stroke="${col.dot}" stroke-width="1.5"
+              fill="none" stroke-dasharray="${dash} 4" stroke-linecap="round" opacity="0.55">
+            <animate attributeName="stroke-dashoffset" from="${dash*4}" to="0"
+                     dur="1.2s" repeatCount="indefinite"/>
+        </path>
+        <text style="font-size:9px;fill:${col.text};font-weight:600;letter-spacing:0.03em;" opacity="0.75">
+            <textPath href="#edge-${i}" startOffset="38%">${e.label}</textPath>
+        </text>`;
+    });
+
+    let nodeSVG = '';
+    nodes.forEach(n => {
+        const col = STATUS_COLOR[n.status];
+        const cx  = n.x + 22;
+        const cy  = n.y + H / 2;
+
+        // Status dot position
+        const dotX = n.x + W - 10;
+        const dotY = n.y + 10;
+
+        nodeSVG += `
+        <g class="lineage-node-group" data-node="${n.id}"
+           onmouseenter="showLineageTooltip(event,'${n.id}')"
+           onmouseleave="hideLineageTooltip()"
+           onclick="showLineageDetail('${n.id}')">
+            <!-- Card rect -->
+            <rect class="lineage-node-rect"
+                  x="${n.x}" y="${n.y}" width="${W}" height="${H}"
+                  rx="8" ry="8"
+                  fill="${col.fill}" stroke="${col.stroke}" stroke-width="1.5"/>
+            <!-- Status dot -->
+            <circle cx="${dotX}" cy="${dotY}" r="4"
+                    fill="${col.dot}" opacity="0.9"/>
+            ${n.status === 'active' ? `
+            <circle cx="${dotX}" cy="${dotY}" r="4" fill="${col.dot}" opacity="0.35">
+                <animate attributeName="r" values="4;8;4" dur="1.8s" repeatCount="indefinite"/>
+                <animate attributeName="opacity" values="0.35;0;0.35" dur="1.8s" repeatCount="indefinite"/>
+            </circle>` : ''}
+            <!-- Label -->
+            <text x="${n.x + 12}" y="${n.y + 21}"
+                  style="font-size:12px;font-weight:700;fill:${col.text};font-family:Inter,sans-serif;">
+                ${n.label}
+            </text>
+            <!-- Sub-label -->
+            <text x="${n.x + 12}" y="${n.y + 37}"
+                  style="font-size:10.5px;fill:${col.text};opacity:0.7;font-family:Inter,sans-serif;">
+                ${n.sub}
+            </text>
+        </g>`;
+    });
+
+    container.innerHTML = `
+    <div class="lineage-wrap">
+        <!-- Legend -->
+        <div class="lineage-legend">
+            <span style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;
+                  letter-spacing:0.06em;margin-right:4px;">Status</span>
+            ${[
+                ['done',    '#22C55E', 'Complete'],
+                ['active',  '#2563EB', 'Ready / Live'],
+                ['warning', '#F59E0B', 'Issues'],
+                ['error',   '#EF4444', 'Blocked'],
+                ['pending', '#CBD5E1', 'Pending'],
+            ].map(([s, c, l]) => `
+                <div class="lineage-legend-item">
+                    <div class="lineage-legend-dot" style="background:${c};"></div>
+                    <span>${l}</span>
+                </div>`).join('')}
+            <span style="margin-left:auto;font-size:11px;color:var(--text-3);">Click node for details</span>
+        </div>
+
+        <!-- SVG Graph -->
+        <div style="position:relative; overflow-x:auto;">
+            <svg id="lineage-svg" viewBox="0 0 ${svgW} ${svgH}"
+                 style="min-width:${svgW}px; height:${svgH}px;">
+
+                <!-- Defs: animated gradient for edges -->
+                <defs>
+                    <marker id="${uid}-arrow" markerWidth="6" markerHeight="6"
+                            refX="5" refY="3" orient="auto">
+                        <path d="M0,0 L0,6 L6,3 z" fill="#94A3B8" opacity="0.5"/>
+                    </marker>
+                </defs>
+
+                <!-- Edges (behind nodes) -->
+                <g id="lineage-edges">${edgeSVG}</g>
+
+                <!-- Nodes (above edges) -->
+                <g id="lineage-nodes">${nodeSVG}</g>
+
+            </svg>
+        </div>
+
+        <!-- Detail panel (shows on node click) -->
+        <div id="lineage-detail-panel"></div>
+    </div>`;
+
+    /* ── Bind node data for tooltip / detail ── */
+    window._lineageNodes = nodeMap;
+    window._lineageStatusColor = STATUS_COLOR;
+}
+
+/* ── Tooltip ── */
+function showLineageTooltip(event, nodeId) {
+    const node    = (window._lineageNodes || {})[nodeId];
+    const tooltip = document.getElementById('lineage-tooltip');
+    if (!node || !tooltip) return;
+    tooltip.textContent = node.detail;
+    tooltip.classList.add('visible');
+    moveLineageTooltip(event);
+}
+function hideLineageTooltip() {
+    const tooltip = document.getElementById('lineage-tooltip');
+    if (tooltip) tooltip.classList.remove('visible');
+}
+document.addEventListener('mousemove', function(e) {
+    if (document.getElementById('lineage-tooltip')?.classList.contains('visible')) {
+        moveLineageTooltip(e);
+    }
+});
+function moveLineageTooltip(e) {
+    const tooltip = document.getElementById('lineage-tooltip');
+    if (!tooltip) return;
+    tooltip.style.left = (e.clientX + 14) + 'px';
+    tooltip.style.top  = (e.clientY - 10) + 'px';
+}
+
+/* ── Node click detail ── */
+function showLineageDetail(nodeId) {
+    const node  = (window._lineageNodes || {})[nodeId];
+    const panel = document.getElementById('lineage-detail-panel');
+    if (!node || !panel) return;
+
+    const col    = (window._lineageStatusColor || {})[node.status] || {};
+    const ICONS  = {
+        source:'ti-cloud-upload', raw:'ti-file', quality:'ti-shield-check',
+        duckdb:'ti-database', transform:'ti-settings', ready:'ti-circle-check',
+        agents:'ti-cpu', outputs:'ti-chart-bar',
+    };
+    const STATUS_LABELS = {
+        done:'Complete', warning:'Issues Detected', error:'Blocked', active:'Live / Ready', pending:'Pending'
+    };
+
+    const rows = node.detail.split('\n').map(line => {
+        const parts = line.split(':');
+        if (parts.length >= 2) {
+            return `<div class="lineage-detail-row">
+                <div class="lineage-detail-key">${parts[0].trim()}</div>
+                <div class="lineage-detail-val">${parts.slice(1).join(':').trim()}</div>
+            </div>`;
+        }
+        return `<div class="lineage-detail-row"><div class="lineage-detail-val">${line}</div></div>`;
+    }).join('');
+
+    panel.innerHTML = `
+    <div class="lineage-detail" style="border-color:${col.stroke || 'var(--border)'};">
+        <div class="lineage-detail-header" style="background:${col.fill || 'var(--bg)'};">
+            <div class="lineage-detail-icon" style="background:${col.fill};border:1px solid ${col.stroke};">
+                <i class="ti ${ICONS[nodeId] || 'ti-circle'}" style="color:${col.text};font-size:13px;" aria-hidden="true"></i>
+            </div>
+            <div class="lineage-detail-title" style="color:${col.text};">${node.label}</div>
+            <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;
+                  background:${col.fill};border:1px solid ${col.stroke};color:${col.text};">
+                ${STATUS_LABELS[node.status] || node.status}
+            </span>
+        </div>
+        <div class="lineage-detail-body">${rows}</div>
+    </div>`;
+}
+
+/* ─────────────────────────────────────────
+   UPLOAD MODAL
+───────────────────────────────────────── */
+function openUploadModal() {
+    const m = document.getElementById('upload-modal');
+    m.style.display = 'flex';
+    document.getElementById('upload-result').style.display   = 'none';
+    document.getElementById('upload-progress').style.display = 'none';
+}
+function closeUploadModal() {
+    document.getElementById('upload-modal').style.display = 'none';
+}
+document.getElementById('upload-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeUploadModal();
+});
+
+async function uploadFile(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const progressWrap = document.getElementById('upload-progress');
+    const progressText = document.getElementById('upload-progress-text');
+    const progressBar  = document.getElementById('upload-bar');
+    const resultDiv    = document.getElementById('upload-result');
+
+    progressWrap.style.display = 'block';
+    resultDiv.style.display    = 'none';
+    progressText.textContent   = `Uploading ${file.name}...`;
+
+    let pct = 0;
+    const interval = setInterval(() => {
+        pct = Math.min(pct + 10, 85);
+        progressBar.style.width = pct + '%';
+    }, 180);
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const res  = await fetch('/files/upload', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${getToken()}` },
+            body: formData,
+        });
+        const data = await res.json();
+        clearInterval(interval);
+        progressBar.style.width  = '100%';
+        progressText.textContent = 'Analysing dataset...';
+        await new Promise(r => setTimeout(r, 500));
+        progressWrap.style.display = 'none';
+        progressBar.style.width    = '0%';
+
+        resultDiv.style.display = 'block';
+        if (!res.ok) {
+            resultDiv.innerHTML = `<div class="alert alert-error"><i class="ti ti-alert-circle alert-icon" aria-hidden="true"></i><span>${data.detail || 'Upload failed'}</span></div>`;
+            return;
+        }
+        resultDiv.innerHTML = `<div class="alert alert-success"><i class="ti ti-circle-check alert-icon" aria-hidden="true"></i><span><strong>${file.name}</strong> uploaded successfully</span></div>`;
+        setTimeout(() => { closeUploadModal(); loadAll(); }, 1200);
+
+    } catch(e) {
+        clearInterval(interval);
+        progressWrap.style.display = 'none';
+        resultDiv.style.display    = 'block';
+        resultDiv.innerHTML = `<div class="alert alert-error"><i class="ti ti-alert-circle alert-icon" aria-hidden="true"></i><span>Upload failed. Please try again.</span></div>`;
+    }
+    input.value = '';
+}
+
+function handleDragOver(e) {
+    e.preventDefault();
+    document.getElementById('upload-zone').classList.add('dragover');
+}
+function handleDragLeave() {
+    document.getElementById('upload-zone').classList.remove('dragover');
+}
+function handleDrop(e) {
+    e.preventDefault();
+    document.getElementById('upload-zone').classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    const input = document.getElementById('file-input');
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    input.files = dt.files;
+    uploadFile(input);
+}
+
+/* ─────────────────────────────────────────
+   HELPERS
+───────────────────────────────────────── */
+function investigateFile(filename) {
+    localStorage.setItem('active_file', filename);
+    window.location.href = '/chat';
+}
+
+function startOutlierInvestigation(filename) {
+    localStorage.setItem('active_file', filename);
+    localStorage.setItem('prefill_question', 'Which columns have outliers and what do they indicate?');
+    window.location.href = '/chat';
+}
+
+function confirmDelete(filename, btn) {
+    showConfirm(`Delete "${filename}"? This cannot be undone.`, async () => {
+        btn.disabled = true;
+        const res = await apiFetch(`/files/${filename}`, { method: 'DELETE' });
+        if (res && res.ok) {
+            showToast(`${filename} deleted`, 'success');
+            if (activeFile === filename) {
+                activeFile        = null;
+                activeProfileData = null;
+                document.getElementById('profile-tabs').style.display = 'none';
+                document.getElementById('profile-content').innerHTML = `
+                    <div style="text-align:center;padding:56px 0;">
+                        <i class="ti ti-chart-dots" style="font-size:48px;color:var(--border);display:block;margin-bottom:16px;" aria-hidden="true"></i>
+                        <div class="text-dim" style="font-size:13px;">Select a dataset to see its profile</div>
+                    </div>`;
+                document.getElementById('profile-score-badge').style.display = 'none';
+                document.getElementById('profile-subtitle').textContent = 'Select a dataset to inspect';
+            }
+            loadAll();
+        } else {
+            btn.disabled = false;
+            showToast('Delete failed', 'error');
+        }
+    });
+}
+
+function formatSize(kb) {
+    if (kb >= 1024 * 1024) return (kb / 1024 / 1024).toFixed(1) + ' GB';
+    if (kb >= 1024)        return (kb / 1024).toFixed(1) + ' MB';
+    return kb.toFixed(1) + ' KB';
+}
+</script>
+{% endblock %}

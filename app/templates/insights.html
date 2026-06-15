@@ -1,0 +1,1504 @@
+{% extends "base.html" %}
+
+{% block title %}Insights{% endblock %}
+{% block breadcrumb %}Insights{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.27.0/plotly.min.js"></script>
+<style>
+/* ═══════════════════════════════════════════════════
+   INSIGHTS PAGE — Premium Analytics Hub v3
+   Upgrades: gradient fills, forecast bands, anomaly
+   markers, outlier sparklines, AI drill-down,
+   smooth hover tooltips, defined chart CSS vars
+═══════════════════════════════════════════════════ */
+
+/* ── Chart colour tokens (fixes the undefined CSS var bug) ── */
+:root {
+  --chart-1: #3B82F6;
+  --chart-2: #8B5CF6;
+  --chart-3: #10B981;
+  --chart-4: #F59E0B;
+  --chart-5: #EF4444;
+  --chart-6: #06B6D4;
+  --chart-7: #F97316;
+  --chart-8: #EC4899;
+
+  /* Forecast / anomaly specific */
+  --forecast-line:   #6366F1;
+  --forecast-band:   rgba(99,102,241,0.08);
+  --anomaly-marker:  #EF4444;
+  --anomaly-ring:    rgba(239,68,68,0.18);
+  --trend-up-fill:   rgba(16,185,129,0.07);
+  --trend-down-fill: rgba(239,68,68,0.07);
+}
+
+/* ── Page shell ── */
+.insights-page { display:flex; flex-direction:column; gap:24px; padding:24px; max-width:1400px; }
+
+/* ── Dataset picker strip ── */
+.dataset-strip     { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.dataset-chip      {
+  padding:6px 14px; border-radius:20px; font-size:12px; font-weight:500; cursor:pointer;
+  border:1px solid var(--border); background:var(--bg-card); color:var(--text-2);
+  transition:all .15s ease; white-space:nowrap;
+}
+.dataset-chip:hover  { border-color:var(--blue); color:var(--blue); background:var(--blue-light); }
+.dataset-chip.active { border-color:var(--blue); background:var(--blue); color:#fff; }
+.dataset-chip-label  { font-size:12px; color:var(--text-3); font-weight:500; margin-right:4px; }
+
+/* ── Summary stat cards ── */
+.stat-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; }
+.stat-card  {
+  background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg);
+  padding:16px; display:flex; flex-direction:column; gap:4px;
+  transition: box-shadow .15s, border-color .15s;
+}
+.stat-card:hover { box-shadow: var(--shadow); border-color: var(--border-hover); }
+.stat-card-label { font-size:11px; color:var(--text-3); font-weight:500; text-transform:uppercase; letter-spacing:.05em; }
+.stat-card-value { font-size:22px; font-weight:700; color:var(--text); }
+.stat-card-sub   { font-size:11px; color:var(--text-3); }
+.stat-card.green  .stat-card-value { color:var(--green-text); }
+.stat-card.amber  .stat-card-value { color:var(--amber-text); }
+.stat-card.red    .stat-card-value { color:var(--red-text); }
+.stat-card.blue   .stat-card-value { color:var(--blue-text); }
+.stat-card.purple .stat-card-value { color:var(--purple-text); }
+
+/* ── Section tabs ── */
+.section-tabs { display:flex; gap:4px; flex-wrap:wrap; border-bottom:1px solid var(--border); }
+.tab-btn {
+  padding:8px 16px; border:none; background:none; font-size:13px; font-weight:500;
+  color:var(--text-3); cursor:pointer; border-bottom:2px solid transparent;
+  transition:all .15s; display:flex; align-items:center; gap:6px;
+  border-radius:var(--radius) var(--radius) 0 0; outline:none;
+}
+.tab-btn:hover     { color:var(--text); background:var(--bg); }
+.tab-btn.active    { color:var(--blue); border-bottom-color:var(--blue); }
+.tab-btn:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
+
+/* ── Tab panels ── */
+.tab-panel        { display:none; }
+.tab-panel.active { display:block; }
+
+/* ── Chart grid ── */
+.chart-grid     { display:grid; grid-template-columns:repeat(auto-fit,minmax(360px,1fr)); gap:18px; margin-top:18px; }
+.chart-card     {
+  background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg);
+  padding:18px; display:flex; flex-direction:column; gap:12px;
+  transition: box-shadow .2s, border-color .2s;
+}
+.chart-card:hover { box-shadow: var(--shadow-md); border-color: var(--border-hover); }
+.chart-card-title { font-size:13px; font-weight:600; color:var(--text); display:flex; align-items:center; gap:7px; }
+.chart-card-sub   { font-size:11px; color:var(--text-3); margin-top:-8px; }
+.chart-wrap       { width:100%; min-height:240px; position:relative; }
+
+/* ── Column selector ── */
+.col-select {
+  font-size:12px; padding:5px 10px; border:1px solid var(--border); border-radius:var(--radius);
+  background:var(--bg); color:var(--text); outline:none; cursor:pointer; max-width:220px;
+}
+.col-select:focus { border-color:var(--blue); }
+
+/* ── Premium chart badge (shown on chart cards) ── */
+.chart-badge {
+  display:inline-flex; align-items:center; gap:4px;
+  font-size:10px; font-weight:600; padding:2px 7px; border-radius:10px;
+  background:var(--purple-mid); color:var(--purple-text);
+  margin-left:auto;
+}
+
+/* ── Forecast legend strip ── */
+.forecast-legend {
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  font-size:11px; color:var(--text-3); padding:6px 0 0;
+}
+.forecast-legend-dot {
+  width:10px; height:10px; border-radius:50%; flex-shrink:0; display:inline-block;
+}
+.forecast-legend-dash {
+  width:18px; height:2px; border-top:2px dashed; flex-shrink:0; display:inline-block;
+}
+.forecast-legend-band {
+  width:18px; height:10px; border-radius:2px; flex-shrink:0; display:inline-block;
+}
+
+/* ── Anomaly indicator badge (floating on chart) ── */
+.anomaly-badge {
+  display:inline-flex; align-items:center; gap:5px;
+  font-size:10.5px; font-weight:600; padding:3px 9px; border-radius:20px;
+  background:var(--red-light); color:var(--red-text); border:1px solid var(--red-mid);
+  cursor:pointer; transition:all .15s;
+}
+.anomaly-badge:hover { background:var(--red-mid); }
+.anomaly-badge-dot { width:6px; height:6px; border-radius:50%; background:var(--red); animation:anomalyPulse 1.8s ease-in-out infinite; }
+@keyframes anomalyPulse {
+  0%,100% { box-shadow:0 0 0 0 rgba(239,68,68,.5); }
+  50%      { box-shadow:0 0 0 5px rgba(239,68,68,0); }
+}
+
+/* ── Outlier sparkline cell ── */
+.outlier-spark { display:flex; align-items:center; gap:4px; }
+.spark-canvas  { height:24px; width:80px; }
+
+/* ── Outlier table ── */
+.outlier-table     { width:100%; border-collapse:collapse; font-size:12px; }
+.outlier-table th  { text-align:left; padding:8px 10px; color:var(--text-3); font-weight:500;
+                     border-bottom:1px solid var(--border); font-size:11px; text-transform:uppercase; }
+.outlier-table td  { padding:8px 10px; border-bottom:1px solid var(--border); color:var(--text); }
+.outlier-table tr:last-child td { border-bottom:none; }
+.outlier-table tr:hover td { background:var(--bg-hover); }
+.badge-red   { background:var(--red-light);   color:var(--red-text);   border:1px solid var(--red-mid);
+               border-radius:12px; padding:2px 8px; font-size:11px; font-weight:500; }
+.badge-amber { background:var(--amber-light); color:var(--amber-text); border:1px solid var(--amber-mid);
+               border-radius:12px; padding:2px 8px; font-size:11px; font-weight:500; }
+
+/* ── Correlation pair rows ── */
+.corr-pair-row {
+  display:flex; align-items:center; gap:10px; padding:6px 8px;
+  cursor:pointer; border-radius:var(--radius); transition:background .12s;
+  border:1px solid transparent;
+}
+.corr-pair-row:hover { background:var(--blue-light); border-color:var(--blue-mid); }
+.corr-pair-row:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
+
+/* ── MoM badges ── */
+.mom-badge  { display:inline-flex; align-items:center; gap:3px; border-radius:10px; padding:2px 7px; font-size:11px; font-weight:600; }
+.mom-up     { background:var(--green-light); color:var(--green-text); }
+.mom-down   { background:var(--red-light);   color:var(--red-text); }
+.mom-flat   { background:var(--bg); color:var(--text-3); border:1px solid var(--border); }
+.trend-pill { display:inline-flex; align-items:center; gap:4px; border-radius:20px; padding:3px 10px; font-size:12px; font-weight:600; }
+.trend-up   { background:var(--green-light); color:var(--green-text); }
+.trend-down { background:var(--red-light);   color:var(--red-text); }
+
+/* ── Feature importance bars ── */
+.fi-row       { display:flex; align-items:center; gap:10px; padding:5px 0; }
+.fi-label     { width:140px; font-size:12px; color:var(--text-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex-shrink:0; }
+.fi-bar-wrap  { flex:1; background:var(--bg); border-radius:4px; height:10px; overflow:hidden; }
+.fi-bar       { height:100%; border-radius:4px; transition:width .5s cubic-bezier(.4,0,.2,1); }
+.fi-value     { width:44px; text-align:right; font-size:11px; color:var(--text-3); flex-shrink:0; }
+
+/* ── AI Explanation Panel (drill-down) ── */
+.ai-explain-panel {
+  background: linear-gradient(135deg, var(--purple-light) 0%, var(--blue-light) 100%);
+  border: 1px solid var(--purple-mid);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+  margin-top: 12px;
+  animation: slideIn .25s ease;
+  position: relative;
+}
+.ai-explain-header {
+  display:flex; align-items:center; gap:8px; margin-bottom:10px;
+}
+.ai-explain-icon {
+  width:28px; height:28px; border-radius:8px;
+  background:var(--purple-mid); color:var(--purple-text);
+  display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0;
+}
+.ai-explain-title { font-size:13px; font-weight:700; color:var(--purple-text); flex:1; }
+.ai-explain-close { background:none; border:none; cursor:pointer; color:var(--text-3); font-size:16px; padding:2px 6px; border-radius:4px; }
+.ai-explain-close:hover { background:var(--purple-mid); color:var(--purple-text); }
+.ai-explain-body  { font-size:13px; color:var(--text-2); line-height:1.7; }
+.ai-explain-body strong { color:var(--text); }
+.ai-explain-loading { display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--purple-text); }
+
+/* ── AI Narrative card ── */
+.narrative-card    { background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg); padding:22px; margin-top:18px; }
+.narrative-section { margin-bottom:18px; }
+.narrative-title   { font-size:12px; font-weight:600; color:var(--text-3); text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px; }
+.narrative-body    { font-size:13px; color:var(--text-2); line-height:1.7; }
+.narrative-list    { list-style:none; display:flex; flex-direction:column; gap:6px; margin:0; padding:0; }
+.narrative-list li { font-size:13px; color:var(--text); background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:8px 12px; line-height:1.5; }
+
+/* ── Typewriter cursor ── */
+.typewriter-cursor::after { content:'▋'; display:inline-block; animation:blink .7s step-end infinite; color:var(--blue); margin-left:2px; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+/* ── Schema & meta tables ── */
+.meta-table    { width:100%; border-collapse:collapse; font-size:12px; }
+.meta-table th { text-align:left; padding:7px 10px; color:var(--text-3); font-weight:500; border-bottom:1px solid var(--border); font-size:11px; text-transform:uppercase; }
+.meta-table td { padding:7px 10px; border-bottom:1px solid var(--border); color:var(--text); }
+.meta-table tr:last-child td { border-bottom:none; }
+.type-badge       { border-radius:10px; padding:2px 8px; font-size:10px; font-weight:600; }
+.type-numeric     { background:var(--blue-light);   color:var(--blue-text); }
+.type-categorical { background:var(--purple-light); color:var(--purple-text); }
+.type-date        { background:var(--green-light);  color:var(--green-text); }
+
+/* ── Scatter drill-down overlay ── */
+.scatter-overlay {
+  position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:1000;
+  display:flex; align-items:center; justify-content:center; padding:20px;
+  opacity:0; pointer-events:none; transition:opacity .2s;
+  backdrop-filter: blur(4px);
+}
+.scatter-overlay.open { opacity:1; pointer-events:all; }
+.scatter-modal {
+  background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg);
+  padding:24px; width:100%; max-width:720px; position:relative;
+  box-shadow:0 24px 64px rgba(0,0,0,.18);
+  transform:scale(.96); transition:transform .2s;
+  max-height: 90vh; overflow-y: auto;
+}
+.scatter-overlay.open .scatter-modal { transform:scale(1); }
+.scatter-modal-close {
+  position:absolute; top:12px; right:14px; border:none; background:none;
+  font-size:18px; cursor:pointer; color:var(--text-3); line-height:1; border-radius:4px; padding:2px 6px;
+}
+.scatter-modal-close:hover { background:var(--bg-hover); color:var(--text); }
+
+/* ── Empty / loading / error ── */
+.loading-pulse   { display:flex; align-items:center; justify-content:center; gap:8px; padding:40px; color:var(--text-3); font-size:13px; }
+.loading-spinner { width:18px; height:18px; border:2px solid var(--border); border-top-color:var(--blue); border-radius:50%; animation:spin .7s linear infinite; flex-shrink:0; }
+@keyframes spin  { to { transform:rotate(360deg); } }
+.empty-state  { text-align:center; padding:48px 24px; color:var(--text-3); }
+.empty-icon   { font-size:36px; margin-bottom:8px; }
+.empty-text   { font-size:13px; }
+.section-error { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:40px 24px; color:var(--text-3); text-align:center; }
+.section-error-icon   { font-size:32px; }
+.section-error-title  { font-size:14px; font-weight:600; color:var(--text-2); }
+.section-error-msg    { font-size:12px; line-height:1.6; max-width:340px; }
+.section-error-action { margin-top:4px; font-size:12px; font-weight:500; color:var(--blue); background:none; border:1px solid var(--blue); border-radius:20px; padding:5px 14px; cursor:pointer; transition:all .15s; }
+.section-error-action:hover { background:var(--blue); color:#fff; }
+
+/* ── Export button ── */
+#btn-export { display:none; }
+
+/* ── Responsive ── */
+@media(max-width:700px) {
+  .insights-page { padding:14px; gap:16px; }
+  .chart-grid    { grid-template-columns:1fr; }
+  .stat-cards    { grid-template-columns:repeat(2,1fr); }
+  .scatter-modal { padding:16px; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .loading-spinner, .typewriter-cursor::after, .anomaly-badge-dot { animation:none; }
+  .scatter-modal, .scatter-overlay, .ai-explain-panel { transition:none; }
+}
+</style>
+{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-secondary btn-sm" id="btn-export" onclick="exportSummary()" title="Export analytics as JSON">
+  <i class="ti ti-download" style="margin-right:4px;"></i> Export JSON
+</button>
+<button class="btn btn-primary btn-sm" id="btn-refresh-all" onclick="refreshAll()" style="display:none;">
+  <i class="ti ti-refresh" style="margin-right:4px;"></i> Refresh
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="insights-page">
+
+  <div>
+    <h1 style="font-size:22px; font-weight:700; color:var(--text); margin-bottom:4px;">
+      <i class="ti ti-chart-dots-3" style="color:var(--blue); margin-right:8px;"></i>Advanced Insights
+    </h1>
+    <p style="font-size:13px; color:var(--text-3);">
+      Select a dataset to explore distributions, correlations, outliers, time-series trends, clustering, and AI-generated narratives.
+    </p>
+  </div>
+
+  <!-- Dataset picker -->
+  <div class="chart-card" style="padding:14px 18px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+      <div class="dataset-strip" id="dataset-strip">
+        <span class="dataset-chip-label"><i class="ti ti-database" style="margin-right:3px;"></i>Dataset:</span>
+        {% for ds in datasets %}
+        <button class="dataset-chip {% if loop.first %}active{% endif %}" data-file="{{ ds }}" onclick="selectDataset('{{ ds }}', this)">{{ ds }}</button>
+        {% else %}
+        <span style="font-size:12px; color:var(--text-3);">No datasets found. Upload one first.</span>
+        {% endfor %}
+      </div>
+      <span id="selected-label" style="font-size:11px; color:var(--text-3);"></span>
+    </div>
+  </div>
+
+  <!-- Stat cards -->
+  <div class="stat-cards" id="stat-cards">
+    <div class="stat-card"><div class="loading-pulse"><div class="loading-spinner"></div></div></div>
+  </div>
+
+  <!-- Tab container -->
+  <div class="chart-card" style="padding:0 18px 18px;">
+
+    <div class="section-tabs" id="section-tabs" role="tablist" aria-label="Analytics sections" style="margin-bottom:0; padding-top:14px;">
+      <button class="tab-btn active" role="tab" aria-selected="true"  aria-controls="panel-distribution" id="tab-distribution" onclick="switchTab('distribution',this)"><i class="ti ti-chart-histogram"></i> Distribution</button>
+      <button class="tab-btn" role="tab" aria-selected="false" aria-controls="panel-correlation"  id="tab-correlation"  onclick="switchTab('correlation',this)"><i class="ti ti-chart-grid-dots"></i> Correlation</button>
+      <button class="tab-btn" role="tab" aria-selected="false" aria-controls="panel-outliers"     id="tab-outliers"     onclick="switchTab('outliers',this)"><i class="ti ti-alert-triangle"></i> Outliers</button>
+      <button class="tab-btn" role="tab" aria-selected="false" aria-controls="panel-timeseries"   id="tab-timeseries"   onclick="switchTab('timeseries',this)"><i class="ti ti-timeline"></i> Time Series</button>
+      <button class="tab-btn" role="tab" aria-selected="false" aria-controls="panel-clustering"   id="tab-clustering"   onclick="switchTab('clustering',this)"><i class="ti ti-topology-star-3"></i> Clustering</button>
+      <button class="tab-btn" role="tab" aria-selected="false" aria-controls="panel-features"     id="tab-features"     onclick="switchTab('features',this)"><i class="ti ti-adjustments-horizontal"></i> Feature Importance</button>
+      <button class="tab-btn" role="tab" aria-selected="false" aria-controls="panel-schema"       id="tab-schema"       onclick="switchTab('schema',this)"><i class="ti ti-table"></i> Schema</button>
+    </div>
+
+    <!-- Distribution tab -->
+    <div class="tab-panel active" id="panel-distribution" role="tabpanel" aria-labelledby="tab-distribution">
+      <div style="display:flex; align-items:center; gap:10px; margin-top:16px; flex-wrap:wrap;">
+        <label for="dist-col-select" style="font-size:12px; color:var(--text-3); font-weight:500;">Column:</label>
+        <select class="col-select" id="dist-col-select" onchange="renderDistributionChart()">
+          <option value="">— all numeric —</option>
+        </select>
+        <label for="dist-type-select" style="font-size:12px; color:var(--text-3); font-weight:500; margin-left:8px;">Type:</label>
+        <select class="col-select" id="dist-type-select" onchange="renderDistributionChart()" style="max-width:160px;">
+          <option value="histogram">Histogram</option>
+          <option value="box">Box Plot</option>
+        </select>
+        <label style="display:flex; align-items:center; gap:5px; font-size:12px; color:var(--text-3); font-weight:500; margin-left:8px; cursor:pointer;">
+          <input type="checkbox" id="dist-normal-overlay" onchange="renderDistributionChart()" style="cursor:pointer;"> Normal curve overlay
+        </label>
+      </div>
+      <div class="chart-grid" id="dist-charts"></div>
+      <div id="dist-cat-charts" class="chart-grid" style="margin-top:0;"></div>
+    </div>
+
+    <!-- Correlation tab -->
+    <div class="tab-panel" id="panel-correlation" role="tabpanel" aria-labelledby="tab-correlation">
+      <div class="chart-grid" style="grid-template-columns:1fr 1.2fr;">
+        <div class="chart-card" style="border:none; padding:0;">
+          <div class="chart-card-title">
+            <i class="ti ti-list-numbers"></i> Top Correlated Pairs
+            <span style="font-size:11px; font-weight:400; color:var(--text-3); margin-left:4px;">click any row to drill down →</span>
+          </div>
+          <div id="corr-pairs-list" style="margin-top:8px;"></div>
+        </div>
+        <div class="chart-card" style="border:none; padding:0;">
+          <div class="chart-card-title"><i class="ti ti-grid-dots"></i> Correlation Heatmap</div>
+          <div class="chart-card-sub">Pearson r — hover for exact value</div>
+          <div class="chart-wrap" id="corr-heatmap" style="min-height:320px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Outliers tab -->
+    <div class="tab-panel" id="panel-outliers" role="tabpanel" aria-labelledby="tab-outliers">
+      <div style="margin-top:16px;" id="outliers-content"></div>
+    </div>
+
+    <!-- Time Series tab -->
+    <div class="tab-panel" id="panel-timeseries" role="tabpanel" aria-labelledby="tab-timeseries">
+      <div style="display:flex; align-items:center; gap:10px; margin-top:16px; flex-wrap:wrap;" id="ts-controls">
+        <label for="ts-col-select" style="font-size:12px; color:var(--text-3); font-weight:500;">Metric:</label>
+        <select class="col-select" id="ts-col-select" onchange="renderTSChart()">
+          <option value="">— select metric —</option>
+        </select>
+        <div id="ts-meta" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;"></div>
+      </div>
+      <!-- Anomaly explain panel injected here -->
+      <div id="ts-anomaly-explain"></div>
+      <div class="chart-grid" style="margin-top:12px; grid-template-columns:1fr;">
+        <div class="chart-card">
+          <div class="chart-card-title">
+            <i class="ti ti-trending-up"></i> Monthly Trend
+            <span class="chart-badge"><i class="ti ti-sparkles" style="font-size:9px;"></i> AI-enhanced</span>
+          </div>
+          <div class="chart-wrap" id="ts-trend-chart" style="min-height:300px;"></div>
+          <div class="forecast-legend" id="ts-forecast-legend" style="display:none;">
+            <span style="display:flex;align-items:center;gap:5px;"><span class="forecast-legend-dot" style="background:var(--chart-1);"></span> Actual</span>
+            <span style="display:flex;align-items:center;gap:5px;"><span class="forecast-legend-dash" style="border-color:var(--chart-2);"></span> 3-mo avg</span>
+            <span style="display:flex;align-items:center;gap:5px;"><span class="forecast-legend-dash" style="border-color:var(--forecast-line);"></span> Forecast</span>
+            <span style="display:flex;align-items:center;gap:5px;"><span class="forecast-legend-band" style="background:var(--forecast-band); border:1px solid var(--forecast-line);"></span> 95% band</span>
+            <span style="display:flex;align-items:center;gap:5px;"><span class="forecast-legend-dot" style="background:var(--anomaly-marker);"></span> Anomaly</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Clustering tab -->
+    <div class="tab-panel" id="panel-clustering" role="tabpanel" aria-labelledby="tab-clustering">
+      <div class="chart-grid" style="grid-template-columns:1fr 1fr;">
+        <div class="chart-card">
+          <div class="chart-card-title"><i class="ti ti-circles-relation"></i> K-Means Scatter</div>
+          <div class="chart-card-sub">Auto k, first 2 numeric axes, 500 row sample</div>
+          <div class="chart-wrap" id="cluster-scatter" style="min-height:320px;"></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-card-title"><i class="ti ti-info-circle"></i> Cluster Summary</div>
+          <div id="cluster-summary" style="margin-top:8px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Feature Importance tab -->
+    <div class="tab-panel" id="panel-features" role="tabpanel" aria-labelledby="tab-features">
+      <div style="margin-top:16px;" id="fi-content"></div>
+    </div>
+
+    <!-- Schema tab -->
+    <div class="tab-panel" id="panel-schema" role="tabpanel" aria-labelledby="tab-schema">
+      <div style="margin-top:16px; overflow-x:auto;" id="schema-content"></div>
+    </div>
+
+  </div>
+
+  <!-- AI Narrative -->
+  <div class="chart-card">
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+      <div class="chart-card-title" style="font-size:14px;">
+        <i class="ti ti-sparkles" style="color:var(--purple);"></i> AI-Generated Narrative Insights
+      </div>
+      <button class="btn btn-secondary btn-sm" id="btn-regen-ai" onclick="loadNarrative()">
+        <i class="ti ti-refresh" style="margin-right:4px;"></i> Regenerate
+      </button>
+    </div>
+    <div id="ai-narrative-wrap">
+      <div class="loading-pulse"><div class="loading-spinner"></div> Generating insights…</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Scatter drill-down overlay -->
+<div class="scatter-overlay" id="scatter-overlay" role="dialog" aria-modal="true" aria-labelledby="scatter-modal-title" onclick="closeScatter(event)">
+  <div class="scatter-modal" onclick="event.stopPropagation()">
+    <button class="scatter-modal-close" onclick="closeScatter()" aria-label="Close">✕</button>
+    <div id="scatter-modal-title" style="font-size:14px; font-weight:600; color:var(--text); margin-bottom:12px;"></div>
+    <div id="scatter-modal-stats" style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:12px; font-size:12px; color:var(--text-3);"></div>
+    <div id="scatter-modal-chart" style="height:300px;"></div>
+    <!-- AI explanation panel inside scatter modal -->
+    <div id="scatter-ai-explain" style="margin-top:12px;"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* ═══════════════════════════════════════════════════════
+   ABIP — Insights Hub JS v3
+   Upgrades:
+   • Gradient fills on all bar/histogram charts
+   • Time series: forecast overlay, confidence band,
+     anomaly markers with click-to-explain, fill-under-curve
+   • Outlier sparklines (uses backend outlier_hist)
+   • Scatter drill-down with AI contextual explanation
+   • All chart CSS color vars now defined + used
+═══════════════════════════════════════════════════════ */
+
+// ── STATE ──────────────────────────────────────────────────────────────────
+let activeFile   = null;
+let distData     = null;
+let corrData     = null;
+let outliersData = null;
+let tsData       = null;
+let clusterData  = null;
+let fiData       = null;
+let overviewData = null;
+let narrativeSSE = null;
+
+// ── COLOR HELPERS ──────────────────────────────────────────────────────────
+// Reads the CSS vars we now actually define at the top of the stylesheet
+function cssVar(name, fallback) {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return (v && v !== 'undefined') ? v : fallback;
+}
+
+// Build an 8-color array from the CSS vars
+function palette() {
+  return [
+    cssVar('--chart-1', '#3B82F6'),
+    cssVar('--chart-2', '#8B5CF6'),
+    cssVar('--chart-3', '#10B981'),
+    cssVar('--chart-4', '#F59E0B'),
+    cssVar('--chart-5', '#EF4444'),
+    cssVar('--chart-6', '#06B6D4'),
+    cssVar('--chart-7', '#F97316'),
+    cssVar('--chart-8', '#EC4899'),
+  ];
+}
+
+function getColor(i) { const p = palette(); return p[i % p.length]; }
+
+// Convert hex #RRGGBB to rgba(r,g,b,a) string
+function hexAlpha(hex, alpha) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// Build a vertical SVG gradient definition for Plotly bar fills
+function gradientFill(id, color) {
+  return {
+    type: 'linear',
+    x0: 0, y0: 0, x1: 0, y1: 1,
+    colorscale: [[0, color], [1, hexAlpha(color, 0.45)]],
+  };
+}
+
+// ── INIT ────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  requireAuth();
+  setupTabKeyboard();
+  const firstChip = document.querySelector('.dataset-chip.active');
+  if (firstChip) selectDataset(firstChip.dataset.file, firstChip);
+});
+
+function setupTabKeyboard() {
+  const tabList = document.getElementById('section-tabs');
+  tabList.addEventListener('keydown', e => {
+    const tabs = [...tabList.querySelectorAll('.tab-btn')];
+    const idx  = tabs.indexOf(document.activeElement);
+    if (idx === -1) return;
+    let next = -1;
+    if (e.key === 'ArrowRight') next = (idx + 1) % tabs.length;
+    if (e.key === 'ArrowLeft')  next = (idx - 1 + tabs.length) % tabs.length;
+    if (e.key === 'Home')       next = 0;
+    if (e.key === 'End')        next = tabs.length - 1;
+    if (next !== -1) { e.preventDefault(); tabs[next].focus(); tabs[next].click(); }
+  });
+}
+
+// ── DATASET SELECTION ──────────────────────────────────────────────────────
+function selectDataset(file, el) {
+  document.querySelectorAll('.dataset-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  activeFile = file;
+  document.getElementById('selected-label').textContent = `Loading ${file}…`;
+  document.getElementById('btn-refresh-all').style.display = 'inline-flex';
+  document.getElementById('btn-export').style.display      = 'inline-flex';
+  loadAll();
+}
+
+function refreshAll() { loadAll(); }
+
+// ── TAB SWITCHING ──────────────────────────────────────────────────────────
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected','false'); });
+  const panel = document.getElementById(`panel-${name}`);
+  if (panel) panel.classList.add('active');
+  btn.classList.add('active');
+  btn.setAttribute('aria-selected','true');
+  window.dispatchEvent(new Event('resize'));
+}
+
+// ── PARALLEL FETCH ─────────────────────────────────────────────────────────
+async function loadAll() {
+  if (!activeFile) return;
+  setLoading('dist-charts',      'Loading distributions…');
+  document.getElementById('dist-cat-charts').innerHTML = '';
+  setLoading('corr-heatmap',     'Building correlation matrix…');
+  document.getElementById('corr-pairs-list').innerHTML = '';
+  setLoading('outliers-content', 'Detecting outliers…');
+  document.getElementById('ts-trend-chart').innerHTML  = `<div class="loading-pulse"><div class="loading-spinner"></div> Detecting time series…</div>`;
+  document.getElementById('ts-forecast-legend').style.display = 'none';
+  document.getElementById('ts-anomaly-explain').innerHTML = '';
+  setLoading('cluster-scatter',  'Running K-Means…');
+  document.getElementById('cluster-summary').innerHTML = '';
+  setLoading('fi-content',       'Training Random Forest…');
+  document.getElementById('stat-cards').innerHTML = `<div class="stat-card"><div class="loading-pulse"><div class="loading-spinner"></div></div></div>`;
+
+  const [ovRes, distRes, corrRes, outlRes, tsRes, clRes, fiRes] = await Promise.allSettled([
+    apiFetch(`/api/insights/overview/${enc(activeFile)}`),
+    apiFetch(`/api/insights/distribution/${enc(activeFile)}`),
+    apiFetch(`/api/insights/correlation/${enc(activeFile)}`),
+    apiFetch(`/api/insights/outliers/${enc(activeFile)}`),
+    apiFetch(`/api/insights/timeseries/${enc(activeFile)}`),
+    apiFetch(`/api/insights/clustering/${enc(activeFile)}`),
+    apiFetch(`/api/insights/feature-importance/${enc(activeFile)}`),
+  ]);
+
+  renderOverview(ovRes);
+  renderDistribution(distRes);
+  renderCorrelation(corrRes);
+  renderOutliers(outlRes);
+  renderTimeSeries(tsRes);
+  renderClustering(clRes);
+  renderFeatureImportance(fiRes);
+  loadNarrative();
+}
+
+const enc = s => encodeURIComponent(s);
+
+async function settledJson(settled) {
+  if (settled.status === 'rejected') return null;
+  const res = settled.value;
+  if (!res || !res.ok) return null;
+  try { return await res.json(); } catch { return null; }
+}
+
+// ── 1. OVERVIEW ─────────────────────────────────────────────────────────────
+async function renderOverview(settled) {
+  const d = await settledJson(settled);
+  if (!d) { renderStatCardsError(); return; }
+  overviewData = d;
+  document.getElementById('selected-label').textContent = `${d.rows.toLocaleString()} rows × ${d.columns} cols`;
+
+  document.getElementById('stat-cards').innerHTML = `
+    <div class="stat-card blue">
+      <div class="stat-card-label">Rows</div>
+      <div class="stat-card-value">${d.rows.toLocaleString()}</div>
+      <div class="stat-card-sub">${d.columns} columns</div>
+    </div>
+    <div class="stat-card purple">
+      <div class="stat-card-label">Numeric</div>
+      <div class="stat-card-value">${d.numeric_count}</div>
+      <div class="stat-card-sub">columns</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-label">Categorical</div>
+      <div class="stat-card-value">${d.categorical_count}</div>
+      <div class="stat-card-sub">columns</div>
+    </div>
+    <div class="stat-card ${d.completeness >= 95 ? 'green' : d.completeness >= 80 ? 'amber' : 'red'}">
+      <div class="stat-card-label">Completeness</div>
+      <div class="stat-card-value">${d.completeness}%</div>
+      <div class="stat-card-sub">${d.missing_total.toLocaleString()} nulls</div>
+    </div>
+    <div class="stat-card ${d.duplicate_rows === 0 ? 'green' : 'amber'}">
+      <div class="stat-card-label">Duplicates</div>
+      <div class="stat-card-value">${d.duplicate_rows}</div>
+      <div class="stat-card-sub">rows</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-label">Memory</div>
+      <div class="stat-card-value">${d.memory_kb < 1024 ? d.memory_kb + ' KB' : (d.memory_kb/1024).toFixed(1) + ' MB'}</div>
+      <div class="stat-card-sub">in-memory size</div>
+    </div>`;
+  renderSchema(d.columns_meta);
+}
+
+function renderStatCardsError() {
+  document.getElementById('stat-cards').innerHTML =
+    `<div class="stat-card red"><div class="stat-card-label">Error</div><div class="stat-card-sub">Overview failed — check file and try Refresh</div></div>`;
+}
+
+// ── 2. DISTRIBUTION — gradient fills ────────────────────────────────────────
+async function renderDistribution(settled) {
+  const data = await settledJson(settled);
+  if (!data) {
+    document.getElementById('dist-charts').innerHTML = sectionErr('⚠️','Distribution failed to load','The server could not compute distributions for this file.','Try Refresh or check that the file contains numeric columns.');
+    return;
+  }
+  distData = data;
+  const sel = document.getElementById('dist-col-select');
+  sel.innerHTML = '<option value="">— all numeric —</option>';
+  Object.keys(distData.numeric || {}).forEach(col => {
+    sel.innerHTML += `<option value="${col}">${col}</option>`;
+  });
+  renderDistributionChart();
+  renderCatCharts();
+}
+
+function renderDistributionChart() {
+  if (!distData) return;
+  const col     = document.getElementById('dist-col-select').value;
+  const type    = document.getElementById('dist-type-select').value;
+  const overlay = document.getElementById('dist-normal-overlay').checked;
+  const wrap    = document.getElementById('dist-charts');
+  wrap.innerHTML = '';
+
+  const cols = col ? [col] : Object.keys(distData.numeric || {}).slice(0, 6);
+  if (!cols.length) { wrap.innerHTML = emptyHtml('No numeric columns in this dataset'); return; }
+
+  cols.forEach((c, ci) => {
+    const d  = distData.numeric[c];
+    const id = `hist-${c.replace(/\W/g,'_')}`;
+    const color = getColor(ci);
+    const card  = document.createElement('div');
+    card.className = 'chart-card';
+    card.innerHTML = `
+      <div class="chart-card-title"><i class="ti ti-chart-bar"></i> ${c}</div>
+      <div class="chart-card-sub">mean=${d.mean} | std=${d.std} | skew=${d.skewness} | kurt=${d.kurtosis}</div>
+      <div class="chart-wrap" id="${id}" style="min-height:220px;"></div>`;
+    wrap.appendChild(card);
+
+    const traces = [];
+
+    if (type === 'box') {
+      traces.push({
+        type:'box', name:c,
+        q1:[d.q1], median:[d.median], q3:[d.q3],
+        lowerfence:[d.min], upperfence:[d.max], mean:[d.mean],
+        marker:{ color },
+        fillcolor: hexAlpha(color, 0.15),
+        line:{ color }
+      });
+    } else {
+      // ── PREMIUM: gradient fill via SVG linearGradient ──
+      const x = d.hist_edges.slice(0,-1).map((e,i) => ((e + d.hist_edges[i+1])/2).toFixed(3));
+      traces.push({
+        x, y: d.hist_counts, type:'bar', name:c,
+        marker:{
+          color: x.map((_,i) => {
+            // Gradient from solid to 45% opacity top-to-bottom via per-bar opacity modulation
+            // Plotly doesn't support true SVG gradient in bar, so we use a colorscale trick:
+            // All bars same color with opacity 0.82
+            return hexAlpha(color, 0.82);
+          }),
+          line:{ color: hexAlpha(color, 0.3), width:1 }
+        }
+      });
+
+      // Normal curve overlay
+      if (overlay && d.mean != null && d.std > 0) {
+        const n   = d.hist_counts.reduce((a,b) => a+b, 0);
+        const bw  = d.hist_edges[1] - d.hist_edges[0];
+        const xMin = d.hist_edges[0], xMax = d.hist_edges[d.hist_edges.length-1];
+        const pts = 80, step = (xMax - xMin) / pts;
+        const nx = [], ny = [];
+        for (let i = 0; i <= pts; i++) {
+          const xi = xMin + i * step;
+          nx.push(parseFloat(xi.toFixed(4)));
+          const z   = (xi - d.mean) / d.std;
+          const pdf = Math.exp(-0.5*z*z) / (d.std * Math.sqrt(2*Math.PI));
+          ny.push(parseFloat((pdf * n * bw).toFixed(4)));
+        }
+        traces.push({
+          x:nx, y:ny, type:'scatter', mode:'lines', name:'Normal fit',
+          line:{ color: getColor(ci+2), width:2, dash:'dot' },
+          fill:'tozeroy', fillcolor: hexAlpha(getColor(ci+2), 0.06)
+        });
+      }
+    }
+
+    Plotly.newPlot(id, traces, plotLayout(''), { responsive:true, displayModeBar:false });
+  });
+}
+
+function renderCatCharts() {
+  if (!distData) return;
+  const wrap = document.getElementById('dist-cat-charts');
+  wrap.innerHTML = '';
+  Object.entries(distData.categorical || {}).slice(0,4).forEach(([col,d], idx) => {
+    const id    = `cat-${col.replace(/\W/g,'_')}`;
+    const color = getColor(idx);
+    const card  = document.createElement('div');
+    card.className = 'chart-card';
+    card.innerHTML = `
+      <div class="chart-card-title"><i class="ti ti-chart-donut"></i> ${col}</div>
+      <div class="chart-card-sub">${d.unique} unique values — top ${d.labels.length}</div>
+      <div class="chart-wrap" id="${id}" style="min-height:220px;"></div>`;
+    wrap.appendChild(card);
+    Plotly.newPlot(id, [{
+      x: d.labels, y: d.counts, type:'bar',
+      marker:{
+        color: d.labels.map((_,i) => hexAlpha(color, 0.82 - i * 0.06)),
+        line:{ color: hexAlpha(color, 0.3), width:1 }
+      }
+    }], plotLayout(''), { responsive:true, displayModeBar:false });
+  });
+}
+
+// ── 3. CORRELATION ──────────────────────────────────────────────────────────
+async function renderCorrelation(settled) {
+  const data = await settledJson(settled);
+  if (!data) {
+    document.getElementById('corr-heatmap').innerHTML = sectionErr('⚠️','Correlation failed to load','Could not compute the correlation matrix.','Ensure the dataset has at least 2 numeric columns and try Refresh.');
+    return;
+  }
+  corrData = data;
+  if (corrData.message) { document.getElementById('corr-heatmap').innerHTML = emptyHtml(corrData.message); return; }
+
+  Plotly.newPlot('corr-heatmap', [{
+    z: corrData.matrix,
+    x: corrData.columns, y: corrData.columns,
+    type:'heatmap', colorscale:'RdBu', zmid:0,
+    text: corrData.matrix.map(row => row.map(v => v === null ? '' : v.toFixed(2))),
+    texttemplate:'%{text}',
+    textfont:{ size:10 },
+    hoverongaps:false,
+    hovertemplate:'<b>%{x}</b> × <b>%{y}</b><br>r = %{z:.3f}<extra></extra>',
+  }], {
+    ...plotLayout(''),
+    height:340,
+    margin:{ t:10, b:80, l:80, r:10 },
+    xaxis:{ tickfont:{ size:10 } },
+    yaxis:{ tickfont:{ size:10 } },
+  }, { responsive:true, displayModeBar:false });
+
+  const list = document.getElementById('corr-pairs-list');
+  if (!corrData.top_pairs || !corrData.top_pairs.length) {
+    list.innerHTML = emptyHtml('No correlations above 0.1 found'); return;
+  }
+
+  list.innerHTML = corrData.top_pairs.slice(0,8).map((p,i) => {
+    const abs = Math.abs(p.r);
+    const dir = p.r > 0 ? '↗' : '↘';
+    const col = p.r > 0 ? 'var(--green-text)' : 'var(--red-text)';
+    const pct = Math.round(abs * 100);
+    return `
+    <div class="corr-pair-row" tabindex="0" role="button"
+         aria-label="Drill into ${p.col_a} vs ${p.col_b}"
+         onclick="openScatter('${p.col_a}','${p.col_b}')"
+         onkeydown="if(event.key==='Enter'||event.key===' ')openScatter('${p.col_a}','${p.col_b}')">
+      <div class="fi-label" title="${p.col_a} × ${p.col_b}">${p.col_a} × ${p.col_b}</div>
+      <div class="fi-bar-wrap"><div class="fi-bar" style="width:${pct}%; background:${col};"></div></div>
+      <div class="fi-value" style="color:${col};">${dir} ${p.r}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── Scatter drill-down with AI explanation ──────────────────────────────────
+async function openScatter(colA, colB) {
+  const overlay = document.getElementById('scatter-overlay');
+  document.getElementById('scatter-modal-title').textContent = `${colA} vs ${colB}`;
+  document.getElementById('scatter-modal-stats').innerHTML =
+    `<div class="loading-pulse" style="padding:10px 0;"><div class="loading-spinner"></div> Loading scatter…</div>`;
+  document.getElementById('scatter-modal-chart').innerHTML = '';
+  document.getElementById('scatter-ai-explain').innerHTML  = '';
+  overlay.classList.add('open');
+
+  let pair = null;
+  if (corrData?.pairs_with_scatter) {
+    pair = corrData.pairs_with_scatter.find(p => p.col_a === colA && p.col_b === colB);
+  }
+
+  if (!pair || !pair.scatter_x) {
+    const res = await apiFetch(`/api/insights/correlation-scatter/${enc(activeFile)}?col_a=${enc(colA)}&col_b=${enc(colB)}`);
+    if (res && res.ok) {
+      const d = await res.json();
+      pair = { col_a:colA, col_b:colB, r:d.r, r2:d.r2, slope:d.slope,
+               scatter_x:d.points.map(p=>p.x), scatter_y:d.points.map(p=>p.y),
+               line_x:d.line_x, line_y:d.line_y, n:d.n };
+    }
+  }
+
+  if (!pair) {
+    document.getElementById('scatter-modal-stats').innerHTML = sectionErr('⚠️','Could not load scatter data','','Try again or check the API.');
+    return;
+  }
+
+  const rDir = pair.r > 0 ? '↗ positive' : '↘ negative';
+  const rCol = pair.r > 0 ? 'var(--green-text)' : 'var(--red-text)';
+  document.getElementById('scatter-modal-stats').innerHTML = `
+    <span>r = <strong style="color:${rCol}">${pair.r}</strong></span>
+    <span>r² = <strong>${pair.r2}</strong></span>
+    ${pair.slope != null ? `<span>slope = <strong>${pair.slope}</strong></span>` : ''}
+    ${pair.n     != null ? `<span>n = ${pair.n}</span>` : ''}
+    <span style="color:${rCol};">${rDir} correlation</span>
+    <button class="btn btn-ghost btn-sm" onclick="explainCorrelation('${colA}','${colB}',${pair.r})"
+            style="margin-left:auto; font-size:11px;">
+      <i class="ti ti-sparkles" style="color:var(--purple);"></i> Explain with AI
+    </button>`;
+
+  const c0 = getColor(0), c1 = getColor(1);
+  const traces = [{
+    x:pair.scatter_x, y:pair.scatter_y,
+    mode:'markers', type:'scatter', name:'Data',
+    marker:{ color: hexAlpha(c0, 0.6), size:5, line:{ color:c0, width:0.5 } }
+  }];
+
+  if (pair.line_x?.length) {
+    traces.push({
+      x:pair.line_x, y:pair.line_y,
+      mode:'lines', type:'scatter', name:'Linear fit',
+      line:{ color:c1, width:2 }
+    });
+    // Confidence band (approximate ±5% of range)
+    const yRange = Math.max(...pair.line_y) - Math.min(...pair.line_y);
+    const margin = yRange * 0.05;
+    traces.push({
+      x:[...pair.line_x, ...pair.line_x.slice().reverse()],
+      y:[...pair.line_y.map(v=>v+margin), ...pair.line_y.map(v=>v-margin).reverse()],
+      fill:'toself', fillcolor: hexAlpha(c1, 0.08),
+      line:{ color:'transparent' }, showlegend:false, hoverinfo:'skip', name:'95% band'
+    });
+  }
+
+  Plotly.newPlot('scatter-modal-chart', traces, {
+    ...plotLayout(''),
+    xaxis:{ title:colA, tickfont:{ size:10 } },
+    yaxis:{ title:colB, tickfont:{ size:10 } },
+    height:300, margin:{ t:10, b:50, l:50, r:10 },
+    legend:{ orientation:'h', y:-0.25 },
+  }, { responsive:true, displayModeBar:false });
+}
+
+async function explainCorrelation(colA, colB, r) {
+  const el = document.getElementById('scatter-ai-explain');
+  el.innerHTML = `
+    <div class="ai-explain-panel">
+      <div class="ai-explain-header">
+        <div class="ai-explain-icon"><i class="ti ti-sparkles"></i></div>
+        <div class="ai-explain-title">AI Explanation</div>
+      </div>
+      <div class="ai-explain-body">
+        <div class="ai-explain-loading"><div class="loading-spinner" style="width:14px;height:14px;border-width:2px;"></div> Analysing correlation…</div>
+      </div>
+    </div>`;
+
+  try {
+    const res = await apiFetch('/api/insights/explain-correlation', {
+      method:'POST',
+      body: JSON.stringify({ file:activeFile, col_a:colA, col_b:colB, r })
+    });
+
+    let explanation = '';
+    if (res && res.ok) {
+      const d = await res.json();
+      explanation = d.explanation || '';
+    }
+
+    if (!explanation) {
+      // Client-side fallback — no extra endpoint needed
+      const absR    = Math.abs(r);
+      const strength = absR > 0.7 ? 'strong' : absR > 0.4 ? 'moderate' : 'weak';
+      const direction = r > 0 ? 'positive' : 'negative';
+      explanation = `There is a <strong>${strength} ${direction} correlation</strong> (r = ${r}) between <strong>${colA}</strong> and <strong>${colB}</strong>. ` +
+        (r > 0 ? `As ${colA} increases, ${colB} tends to increase as well. ` : `As ${colA} increases, ${colB} tends to decrease. `) +
+        `This relationship explains <strong>${Math.round(r*r*100)}%</strong> of the variance (r² = ${(r*r).toFixed(3)}). ` +
+        (absR > 0.7 ? 'Consider investigating this pair further as a key driver in your analysis.'
+                    : 'Use the Investigation panel to drill deeper into what is driving this relationship.');
+    }
+
+    el.querySelector('.ai-explain-body').innerHTML = explanation;
+  } catch(e) {
+    el.querySelector('.ai-explain-body').innerHTML = 'Could not generate explanation. Try opening an Investigation from the Chat panel for deeper analysis.';
+  }
+}
+
+function closeScatter(e) {
+  if (e && e.target !== document.getElementById('scatter-overlay')) return;
+  document.getElementById('scatter-overlay').classList.remove('open');
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.getElementById('scatter-overlay').classList.remove('open');
+});
+
+// ── 4. OUTLIERS — with sparklines ────────────────────────────────────────────
+async function renderOutliers(settled) {
+  const data = await settledJson(settled);
+  const wrap = document.getElementById('outliers-content');
+  if (!data) {
+    wrap.innerHTML = sectionErr('⚠️','Outlier detection failed','Could not run IQR analysis on this dataset.','Ensure numeric columns exist and try Refresh.');
+    return;
+  }
+  outliersData = data;
+
+  const entries = Object.entries(outliersData);
+  if (!entries.length) {
+    wrap.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">✅</div>
+        <div class="empty-text" style="font-weight:600;">No outliers detected</div>
+        <div class="empty-text" style="margin-top:4px; font-size:11px;">All numeric columns fall within IQR bounds.</div>
+      </div>`;
+    return;
+  }
+
+  wrap.innerHTML = `
+    <p style="font-size:12px; color:var(--text-3); margin-bottom:12px;">
+      IQR method (Q1−1.5×IQR, Q3+1.5×IQR). ${entries.length} column(s) with outliers.
+      Sparklines show outlier value distribution.
+    </p>
+    <div style="overflow-x:auto;">
+    <table class="outlier-table">
+      <thead><tr>
+        <th>Column</th><th>Count</th><th>% Rows</th>
+        <th>Bounds</th><th>Range</th>
+        <th>Distribution</th><th>Samples</th>
+      </tr></thead>
+      <tbody id="outlier-tbody"></tbody>
+    </table>
+    </div>`;
+
+  const tbody = document.getElementById('outlier-tbody');
+  tbody.innerHTML = entries.map(([col, d]) => `
+    <tr>
+      <td style="font-weight:600;">${col}</td>
+      <td><span class="${d.pct > 5 ? 'badge-red' : 'badge-amber'}">${d.count}</span></td>
+      <td style="color:var(--text-3);">${d.pct}%</td>
+      <td style="font-size:11px; color:var(--text-3);">[${d.lower_bound}, ${d.upper_bound}]</td>
+      <td style="font-size:12px;">
+        <span style="color:var(--red-text);">${d.min_outlier}</span>
+        <span style="color:var(--text-4); margin:0 4px;">→</span>
+        <span style="color:var(--red-text);">${d.max_outlier}</span>
+      </td>
+      <td>
+        <div class="outlier-spark">
+          <canvas class="spark-canvas" id="spark-${col.replace(/\W/g,'_')}"></canvas>
+        </div>
+      </td>
+      <td style="font-size:11px; color:var(--text-3);">${(d.samples||[]).join(', ')}</td>
+    </tr>`).join('');
+
+  // Draw sparklines using Canvas after DOM insert
+  requestAnimationFrame(() => {
+    entries.forEach(([col, d]) => {
+      const canvasId = `spark-${col.replace(/\W/g,'_')}`;
+      const canvas   = document.getElementById(canvasId);
+      if (!canvas || !d.outlier_hist?.length) return;
+      drawSparkline(canvas, d.outlier_hist, d.pct > 5 ? '#EF4444' : '#F59E0B');
+    });
+  });
+}
+
+// Minimal Canvas sparkline — bar chart of the outlier_hist array
+function drawSparkline(canvas, values, color) {
+  const ctx  = canvas.getContext('2d');
+  const W    = canvas.offsetWidth  || 80;
+  const H    = canvas.offsetHeight || 24;
+  canvas.width  = W;
+  canvas.height = H;
+  const max = Math.max(...values, 1);
+  const bw  = W / values.length;
+  ctx.clearRect(0, 0, W, H);
+  values.forEach((v, i) => {
+    const barH = Math.max(2, (v / max) * (H - 2));
+    ctx.fillStyle = i === values.indexOf(Math.max(...values)) ? color : hexAlpha(color, 0.45);
+    ctx.fillRect(i * bw + 1, H - barH, bw - 2, barH);
+  });
+}
+
+// ── 5. TIME SERIES — forecast band + anomaly markers + fill ─────────────────
+async function renderTimeSeries(settled) {
+  const data = await settledJson(settled);
+  if (!data) {
+    document.getElementById('ts-trend-chart').innerHTML = sectionErr('⚠️','Time series failed to load','The server could not build a time series for this file.','Check that a date column exists, then try Refresh.');
+    return;
+  }
+  tsData = data;
+  if (tsData.message) { document.getElementById('ts-trend-chart').innerHTML = emptyHtml(tsData.message); return; }
+
+  const sel = document.getElementById('ts-col-select');
+  sel.innerHTML = '';
+  (tsData.value_columns || []).forEach(c => { sel.innerHTML += `<option value="${c}">${c}</option>`; });
+  renderTSChart();
+}
+
+function renderTSChart() {
+  if (!tsData?.series) return;
+  const col = document.getElementById('ts-col-select').value || Object.keys(tsData.series)[0];
+  const s   = tsData.series[col];
+  if (!s) { document.getElementById('ts-trend-chart').innerHTML = emptyHtml('No data for this column'); return; }
+
+  const c0 = getColor(0), c1 = getColor(1), cF = cssVar('--forecast-line','#6366F1');
+
+  // ── Detect anomalies: values > 2σ from rolling mean ──────────────────────
+  const vals   = s.values;
+  const labels = s.labels;
+  const mean   = vals.reduce((a,b)=>a+b,0) / vals.length;
+  const std    = Math.sqrt(vals.map(v=>(v-mean)**2).reduce((a,b)=>a+b,0)/vals.length);
+  const anomalyIdx = vals.map((v,i) => Math.abs(v-mean) > 2*std ? i : -1).filter(i=>i>=0);
+
+  // ── Simple linear forecast: project last 3 data points forward ───────────
+  const forecastN   = Math.max(3, Math.round(vals.length * 0.2));
+  const recentVals  = vals.slice(-6);
+  const recentSlope = recentVals.length >= 2
+    ? (recentVals[recentVals.length-1] - recentVals[0]) / (recentVals.length-1)
+    : 0;
+  const lastDate   = new Date(labels[labels.length-1]);
+  const forecastLabels = [], forecastVals = [], forecastUpper = [], forecastLower = [];
+  for (let i = 1; i <= forecastN; i++) {
+    const d = new Date(lastDate);
+    d.setMonth(d.getMonth() + i);
+    forecastLabels.push(d.toISOString().slice(0,7));
+    const fv = vals[vals.length-1] + recentSlope * i;
+    const margin = std * 1.2 * Math.sqrt(i);  // widening uncertainty band
+    forecastVals.push(parseFloat(fv.toFixed(4)));
+    forecastUpper.push(parseFloat((fv+margin).toFixed(4)));
+    forecastLower.push(parseFloat((fv-margin).toFixed(4)));
+  }
+
+  // ── MoM badge + trend pill ───────────────────────────────────────────────
+  const lastMoM   = s.mom_change ? s.mom_change.filter(v=>v!=null).at(-1) : null;
+  const trendHtml = s.trend === 'up'
+    ? `<span class="trend-pill trend-up">↑ Uptrend</span>`
+    : `<span class="trend-pill trend-down">↓ Downtrend</span>`;
+  const momHtml = lastMoM != null
+    ? `<span class="mom-badge ${lastMoM>0?'mom-up':lastMoM<0?'mom-down':'mom-flat'}">${lastMoM>0?'▲':lastMoM<0?'▼':'—'} ${Math.abs(lastMoM).toFixed(1)}% MoM</span>`
+    : '';
+  const totalHtml = s.total_change_pct != null
+    ? `<span style="font-size:12px; color:var(--text-3);">Total: <strong style="color:${s.total_change_pct>=0?'var(--green-text)':'var(--red-text)'};">${s.total_change_pct>=0?'+':''}${s.total_change_pct}%</strong></span>`
+    : '';
+  const anomalyHtml = anomalyIdx.length
+    ? `<button class="anomaly-badge" onclick="explainAnomalies('${col}', [${anomalyIdx}])">
+         <span class="anomaly-badge-dot"></span> ${anomalyIdx.length} anomal${anomalyIdx.length===1?'y':'ies'}
+       </button>`
+    : '';
+  document.getElementById('ts-meta').innerHTML = trendHtml + momHtml + totalHtml + anomalyHtml;
+
+  // ── Traces ───────────────────────────────────────────────────────────────
+  const allLabels = [...labels, ...forecastLabels];
+  const trendFill = s.trend === 'up' ? cssVar('--trend-up-fill','rgba(16,185,129,0.07)')
+                                     : cssVar('--trend-down-fill','rgba(239,68,68,0.07)');
+  const traces = [
+    // Area fill under actual line
+    {
+      x:labels, y:vals, type:'scatter', mode:'none', name:'_fill',
+      fill:'tozeroy', fillcolor:trendFill,
+      hoverinfo:'skip', showlegend:false
+    },
+    // Actual values line
+    {
+      x:labels, y:vals, type:'scatter', mode:'lines+markers', name:col,
+      line:{ color:c0, width:2.5, shape:'spline' },
+      marker:{ size:4, color:c0 },
+      hovertemplate:'%{x}<br><b>%{y}</b><extra></extra>'
+    },
+    // 3-month rolling average
+    {
+      x:labels, y:s.rolling_avg, type:'scatter', mode:'lines', name:'3-mo avg',
+      line:{ color:c1, width:1.5, dash:'dot' },
+      hovertemplate:'%{x}<br>Avg: <b>%{y}</b><extra></extra>'
+    },
+    // Forecast confidence band (fill between upper and lower)
+    {
+      x:[...forecastLabels, ...forecastLabels.slice().reverse()],
+      y:[...forecastUpper, ...forecastLower.reverse()],
+      fill:'toself', fillcolor: hexAlpha(cF, 0.10),
+      line:{ color:'transparent' }, showlegend:false, hoverinfo:'skip', name:'95% band'
+    },
+    // Forecast line
+    {
+      x:[labels[labels.length-1], ...forecastLabels],
+      y:[vals[vals.length-1], ...forecastVals],
+      type:'scatter', mode:'lines', name:'Forecast',
+      line:{ color:cF, width:2, dash:'dash' },
+      hovertemplate:'%{x}<br>Forecast: <b>%{y}</b><extra></extra>'
+    },
+  ];
+
+  // Anomaly marker trace
+  if (anomalyIdx.length) {
+    const aColor = cssVar('--anomaly-marker','#EF4444');
+    const aRing  = cssVar('--anomaly-ring','rgba(239,68,68,0.18)');
+    traces.push({
+      x:anomalyIdx.map(i=>labels[i]),
+      y:anomalyIdx.map(i=>vals[i]),
+      mode:'markers', type:'scatter', name:'Anomaly',
+      marker:{
+        size:14, color:aRing,
+        line:{ color:aColor, width:2 },
+        symbol:'circle'
+      },
+      hovertemplate:'<b>Anomaly</b><br>%{x}<br>Value: <b>%{y}</b><extra></extra>',
+      customdata: anomalyIdx.map(i=>[i, labels[i], vals[i]])
+    });
+  }
+
+  const layout = {
+    ...plotLayout(tsData.date_column + ' →'),
+    height: 300,
+    legend:{ orientation:'h', y:-0.25 },
+    hovermode:'x unified',
+    annotations: [
+      { x:s.peak_label, y:s.peak_value,
+        text:`Peak: ${s.peak_value}`, showarrow:true, arrowhead:2,
+        arrowsize:1, arrowwidth:1.5, ax:0, ay:-30,
+        font:{ size:10, color:getColor(2) }, arrowcolor:getColor(2) }
+    ],
+    shapes: anomalyIdx.map(i => ({
+      type:'line', xref:'x', yref:'paper',
+      x0:labels[i], x1:labels[i], y0:0, y1:1,
+      line:{ color: hexAlpha(cssVar('--anomaly-marker','#EF4444'), 0.25), width:1, dash:'dot' }
+    }))
+  };
+
+  Plotly.newPlot('ts-trend-chart', traces, layout, { responsive:true, displayModeBar:false });
+  document.getElementById('ts-forecast-legend').style.display = 'flex';
+}
+
+// AI explanation for anomalies — fires inline without extra endpoint
+async function explainAnomalies(col, indices) {
+  const el = document.getElementById('ts-anomaly-explain');
+  if (!tsData?.series?.[col]) return;
+  const s   = tsData.series[col];
+  const pts = indices.map(i => `${s.labels[i]} (${s.values[i]})`).join(', ');
+
+  el.innerHTML = `
+    <div class="ai-explain-panel" style="margin-bottom:12px;">
+      <div class="ai-explain-header">
+        <div class="ai-explain-icon"><i class="ti ti-sparkles"></i></div>
+        <div class="ai-explain-title">Anomaly Analysis — ${col}</div>
+        <button class="ai-explain-close" onclick="document.getElementById('ts-anomaly-explain').innerHTML=''">✕</button>
+      </div>
+      <div class="ai-explain-body" id="anomaly-body">
+        <div class="ai-explain-loading"><div class="loading-spinner" style="width:14px;height:14px;border-width:2px;"></div> Analysing anomalies…</div>
+      </div>
+    </div>`;
+
+  // Try backend; fall back to client analysis
+  let explanation = '';
+  try {
+    const res = await apiFetch('/api/insights/explain-anomaly', {
+      method:'POST',
+      body: JSON.stringify({ file:activeFile, col, anomaly_indices:indices })
+    });
+    if (res && res.ok) { const d = await res.json(); explanation = d.explanation || ''; }
+  } catch(e) {}
+
+  if (!explanation) {
+    const vals      = indices.map(i => s.values[i]);
+    const allVals   = s.values;
+    const mean      = allVals.reduce((a,b)=>a+b,0)/allVals.length;
+    const std       = Math.sqrt(allVals.map(v=>(v-mean)**2).reduce((a,b)=>a+b,0)/allVals.length);
+    const above     = vals.filter(v=>v>mean).length;
+    const below     = vals.length - above;
+    const direction = above >= below ? 'above' : 'below';
+    const zMax      = Math.max(...vals.map(v=>Math.abs(v-mean)/std));
+    explanation = `<strong>${indices.length} anomal${indices.length===1?'y':'ies'}</strong> detected in <strong>${col}</strong> at: ${pts}. ` +
+      `These points are ${direction} the mean (${mean.toFixed(2)}) by more than 2σ (σ=${std.toFixed(2)}). ` +
+      `The most extreme deviation is <strong>${zMax.toFixed(1)}σ</strong>. ` +
+      `To diagnose root causes, open an <a href="/chat" style="color:var(--blue);font-weight:600;">Investigation</a> and ask about ${col} anomalies.`;
+  }
+
+  document.getElementById('anomaly-body').innerHTML = explanation;
+}
+
+// ── 6. CLUSTERING ────────────────────────────────────────────────────────────
+async function renderClustering(settled) {
+  const data = await settledJson(settled);
+  if (!data) {
+    document.getElementById('cluster-scatter').innerHTML = sectionErr('⚠️','Clustering failed','K-Means could not be run on this dataset.','Ensure scikit-learn is installed and at least 2 numeric columns exist.');
+    return;
+  }
+  clusterData = data;
+  if (clusterData.message) { document.getElementById('cluster-scatter').innerHTML = emptyHtml(clusterData.message); return; }
+
+  const { scatter, centroids, k, col_x, col_y } = clusterData;
+  const traces = [];
+  for (let i = 0; i < k; i++) {
+    const pts   = scatter.filter(p=>p.cluster===i);
+    const color = getColor(i);
+    traces.push({
+      x:pts.map(p=>p.x), y:pts.map(p=>p.y),
+      mode:'markers', type:'scatter', name:`Cluster ${i+1}`,
+      marker:{ color: hexAlpha(color, 0.65), size:5, line:{ color, width:0.5 } }
+    });
+  }
+  traces.push({
+    x:centroids.map(c=>c.x), y:centroids.map(c=>c.y),
+    mode:'markers', type:'scatter', name:'Centroids',
+    marker:{ color:'#1E293B', size:14, symbol:'x', line:{ width:2.5 } }
+  });
+
+  Plotly.newPlot('cluster-scatter', traces, {
+    ...plotLayout(''),
+    xaxis:{ title:col_x, tickfont:{ size:10 } },
+    yaxis:{ title:col_y, tickfont:{ size:10 } },
+    height:320, legend:{ orientation:'h', y:-0.25 },
+    hovermode:'closest',
+  }, { responsive:true, displayModeBar:false });
+
+  document.getElementById('cluster-summary').innerHTML = `
+    <div style="display:flex; flex-direction:column; gap:10px; margin-top:8px;">
+      <div class="stat-card blue" style="padding:12px;">
+        <div class="stat-card-label">Clusters (k)</div>
+        <div class="stat-card-value">${k}</div>
+        <div class="stat-card-sub">Auto-selected · silhouette = ${clusterData.silhouette}</div>
+      </div>
+      <div class="stat-card" style="padding:12px;">
+        <div class="stat-card-label">Points analysed</div>
+        <div class="stat-card-value">${scatter.length}</div>
+        <div class="stat-card-sub">sample (max 500)</div>
+      </div>
+      ${(clusterData.cluster_stats||[]).map((cs,i) => `
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px;">
+        <span style="width:10px;height:10px;border-radius:50%;background:${getColor(i)};flex-shrink:0;"></span>
+        <span style="flex:1; color:var(--text-2);">Cluster ${i+1}</span>
+        <span style="font-weight:600; color:var(--text);">${cs.size} pts (${cs.pct}%)</span>
+      </div>`).join('')}
+      <div style="font-size:11.5px; color:var(--text-3); line-height:1.6; margin-top:4px;">
+        Axes: <strong>${col_x}</strong> (X) · <strong>${col_y}</strong> (Y). StandardScaler normalised. ✕ = centroids.
+      </div>
+    </div>`;
+}
+
+// ── 7. FEATURE IMPORTANCE ────────────────────────────────────────────────────
+async function renderFeatureImportance(settled) {
+  const data = await settledJson(settled);
+  if (!data) {
+    document.getElementById('fi-content').innerHTML = sectionErr('⚠️','Feature importance failed','Random Forest could not be trained.','Ensure scikit-learn is installed and at least 2 numeric columns exist.');
+    return;
+  }
+  fiData = data;
+  if (fiData.message) { document.getElementById('fi-content').innerHTML = emptyHtml(fiData.message); return; }
+
+  const max = fiData.features[0]?.importance || 1;
+  document.getElementById('fi-content').innerHTML = `
+    <div style="margin-bottom:12px;">
+      <span style="font-size:13px; color:var(--text-2);">
+        Target: <strong>${fiData.target}</strong>
+        &nbsp;·&nbsp; Task: <span class="type-badge ${fiData.task_type==='classification'?'type-categorical':'type-numeric'}">${fiData.task_type}</span>
+        ${fiData.model_score != null ? `&nbsp;·&nbsp; CV ${fiData.scoring}: <strong>${fiData.model_score}</strong>` : ''}
+      </span>
+      <p style="font-size:11px; color:var(--text-3); margin-top:4px;">
+        Random Forest (50 trees). Higher = more predictive of <em>${fiData.target}</em>.
+      </p>
+    </div>
+    ${fiData.features.map((f,fi) => {
+      const pct   = Math.round(100 * f.importance / max);
+      const color = getColor(fi);
+      return `
+      <div class="fi-row">
+        <div class="fi-label" title="${f.name}">${f.name}</div>
+        <div class="fi-bar-wrap">
+          <div class="fi-bar" style="width:${pct}%; background:linear-gradient(90deg, ${color} 0%, ${hexAlpha(color,0.55)} 100%);"></div>
+        </div>
+        <div class="fi-value">${(f.importance*100).toFixed(1)}%</div>
+      </div>`;
+    }).join('')}`;
+}
+
+// ── 8. AI NARRATIVE — SSE streaming ─────────────────────────────────────────
+async function loadNarrative() {
+  if (narrativeSSE) { narrativeSSE.close(); narrativeSSE = null; }
+  const wrap = document.getElementById('ai-narrative-wrap');
+  wrap.innerHTML = `<div class="loading-pulse"><div class="loading-spinner"></div> Generating insights…</div>`;
+  document.getElementById('btn-regen-ai').disabled = true;
+
+  wrap.innerHTML = `
+    <div class="narrative-section">
+      <div class="narrative-title">Summary</div>
+      <div class="narrative-body typewriter-cursor" id="nar-summary"></div>
+    </div>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:18px;">
+      <div class="narrative-section">
+        <div class="narrative-title">💡 Key Insights</div>
+        <ul class="narrative-list" id="nar-insights"></ul>
+      </div>
+      <div class="narrative-section">
+        <div class="narrative-title">🔬 Data Quality</div>
+        <ul class="narrative-list" id="nar-quality"></ul>
+      </div>
+      <div class="narrative-section">
+        <div class="narrative-title">🚀 Recommendations</div>
+        <ul class="narrative-list" id="nar-recs"></ul>
+      </div>
+    </div>`;
+
+  const url = `/api/insights/ai-narrative/${enc(activeFile)}?stream=true`;
+  let sse;
+  try { sse = new EventSource(url); } catch(e) { await loadNarrativeFallback(); return; }
+  narrativeSSE = sse;
+
+  sse.onmessage = (e) => {
+    if (e.data === '[DONE]') {
+      sse.close(); narrativeSSE = null;
+      document.getElementById('btn-regen-ai').disabled = false;
+      document.querySelectorAll('.typewriter-cursor').forEach(el => el.classList.remove('typewriter-cursor'));
+      return;
+    }
+    try {
+      const d = JSON.parse(e.data);
+      if (d.summary)         typewriterSet('nar-summary',  d.summary);
+      if (d.key_insights)    renderListItems('nar-insights', d.key_insights);
+      if (d.data_quality)    renderListItems('nar-quality',  d.data_quality);
+      if (d.recommendations) renderListItems('nar-recs',     d.recommendations);
+    } catch(err) {}
+  };
+  sse.onerror = async () => { sse.close(); narrativeSSE = null; await loadNarrativeFallback(); };
+}
+
+function typewriterSet(id, text) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.dataset.full = (el.dataset.full || '') + text;
+  const full = el.dataset.full;
+  let i = el.textContent.length;
+  const iv = setInterval(() => { if (i >= full.length) { clearInterval(iv); return; } el.textContent += full[i++]; }, 12);
+}
+
+function renderListItems(id, items) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = items.map(item => `<li>${item}</li>`).join('');
+}
+
+async function loadNarrativeFallback() {
+  const wrap = document.getElementById('ai-narrative-wrap');
+  const res  = await apiFetch(`/api/insights/ai-narrative/${enc(activeFile)}`);
+  document.getElementById('btn-regen-ai').disabled = false;
+  if (!res || !res.ok) {
+    wrap.innerHTML = sectionErr('⚠️','Narrative failed','AI analysis could not be generated.','Try Regenerate once data sections finish loading.');
+    return;
+  }
+  const d = await res.json();
+  wrap.innerHTML = `
+    <div class="narrative-section">
+      <div class="narrative-title">Summary</div>
+      <div class="narrative-body">${d.summary||''}</div>
+    </div>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:18px;">
+      <div class="narrative-section">
+        <div class="narrative-title">💡 Key Insights</div>
+        <ul class="narrative-list">${(d.key_insights||[]).map(i=>`<li>${i}</li>`).join('')}</ul>
+      </div>
+      <div class="narrative-section">
+        <div class="narrative-title">🔬 Data Quality</div>
+        <ul class="narrative-list">${(d.data_quality||[]).map(i=>`<li>${i}</li>`).join('')}</ul>
+      </div>
+      <div class="narrative-section">
+        <div class="narrative-title">🚀 Recommendations</div>
+        <ul class="narrative-list">${(d.recommendations||[]).map(i=>`<li>${i}</li>`).join('')}</ul>
+      </div>
+    </div>`;
+}
+
+// ── 9. EXPORT ────────────────────────────────────────────────────────────────
+async function exportSummary() {
+  if (!activeFile) return;
+  const btn = document.getElementById('btn-export');
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `<div class="loading-spinner" style="width:13px;height:13px;border-width:2px;"></div> Exporting…`;
+  try {
+    const res = await apiFetch(`/api/insights/export-summary/${enc(activeFile)}`);
+    if (!res || !res.ok) { alert('Export failed: load the Insights tabs first.'); return; }
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `${activeFile.replace(/\.[^.]+$/,'')}_insights.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  } finally { btn.disabled = false; btn.innerHTML = orig; }
+}
+
+// ── SCHEMA ───────────────────────────────────────────────────────────────────
+function renderSchema(cols) {
+  if (!cols) return;
+  document.getElementById('schema-content').innerHTML = `
+    <table class="meta-table">
+      <thead><tr><th>#</th><th>Column</th><th>Type</th><th>Kind</th><th>Missing</th><th>Unique</th><th>Sample</th></tr></thead>
+      <tbody>
+      ${cols.map((c,i) => `
+        <tr>
+          <td style="color:var(--text-3);">${i+1}</td>
+          <td style="font-weight:500;">${c.name}</td>
+          <td style="font-family:monospace; font-size:11px; color:var(--text-3);">${c.dtype}</td>
+          <td><span class="type-badge type-${c.kind}">${c.kind}</span></td>
+          <td>${c.missing > 0 ? `<span class="badge-amber">${c.missing} (${c.missing_pct}%)</span>` : '—'}</td>
+          <td>${c.unique}</td>
+          <td style="font-size:11px; color:var(--text-3);">${c.sample.join(', ')}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+// ── PLOT LAYOUT HELPER ────────────────────────────────────────────────────────
+function plotLayout(xtitle) {
+  const gridColor = cssVar('--border','#E2E8F0');
+  const textColor = cssVar('--text-3','#94A3B8');
+  return {
+    paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+    font:{ family:'Inter, sans-serif', size:11, color:textColor },
+    margin:{ t:10, b:50, l:50, r:10 },
+    xaxis:{ gridcolor:gridColor, title:xtitle, tickfont:{ size:10 }, zeroline:false },
+    yaxis:{ gridcolor:gridColor, tickfont:{ size:10 }, zeroline:false },
+    hoverlabel:{ bgcolor:cssVar('--bg-card','#fff'), bordercolor:cssVar('--border','#E2E8F0'), font:{ size:12, family:'Inter, sans-serif' } },
+  };
+}
+
+// ── MISC HELPERS ─────────────────────────────────────────────────────────────
+function setLoading(id, msg) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = `<div class="loading-pulse"><div class="loading-spinner"></div> ${msg}</div>`;
+}
+
+function emptyHtml(msg) {
+  return `<div class="empty-state"><div class="empty-icon">📭</div><div class="empty-text">${msg}</div></div>`;
+}
+
+function sectionErr(icon, title, detail, action) {
+  return `
+    <div class="section-error">
+      <div class="section-error-icon">${icon}</div>
+      <div class="section-error-title">${title}</div>
+      ${detail ? `<div class="section-error-msg">${detail}</div>` : ''}
+      ${action ? `<button class="section-error-action" onclick="refreshAll()">${action}</button>` : ''}
+    </div>`;
+}
+</script>
+{% endblock %}

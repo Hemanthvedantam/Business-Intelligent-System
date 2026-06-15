@@ -1,0 +1,618 @@
+{% extends "base.html" %}
+{% block title %}NLP Analysis — ABIP{% endblock %}
+{% block breadcrumb %}NLP Analysis{% endblock %}
+
+{% block topbar_actions %}
+<select id="topbar-file-select" class="form-input" style="width:220px; font-size:13px;"
+        onchange="onFileChange()">
+    <option value="">Select a dataset...</option>
+</select>
+<button class="btn btn-primary btn-sm" id="analyse-btn"
+        onclick="runAnalysis()" disabled>
+    <i class="ti ti-sparkles" aria-hidden="true"></i> Generate Intelligence
+</button>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Intro strip (hidden once analysis runs) ── -->
+<div id="intro-strip" class="anim-slide" style="margin-bottom:24px;">
+    <div style="background: linear-gradient(135deg,
+            rgba(99,102,241,0.07) 0%, rgba(56,189,248,0.07) 100%);
+         border:1px solid var(--border); border-radius:var(--radius-lg);
+         padding:28px 32px; position:relative; overflow:hidden;">
+        <div style="position:absolute; top:0; left:0; right:0; height:2px;
+             background:linear-gradient(90deg,var(--indigo),var(--cyan),transparent);"></div>
+        <div style="display:flex; align-items:flex-start; gap:20px;">
+            <div style="width:48px; height:48px; background:var(--indigo-dim);
+                 border:1px solid rgba(99,102,241,0.3); border-radius:var(--radius-lg);
+                 display:flex; align-items:center; justify-content:center;
+                 font-size:22px; color:var(--indigo); flex-shrink:0;">
+                <i class="ti ti-message-bolt" aria-hidden="true"></i>
+            </div>
+            <div>
+                <div style="font-size:18px; font-weight:700; color:var(--text); margin-bottom:6px;
+                     letter-spacing:-0.02em;">NLP Intelligence Layer</div>
+                <div style="font-size:13.5px; color:var(--text-3); line-height:1.7; max-width:620px;">
+                    Select a dataset above — intelligence generates automatically.
+                    Business context, key insights, trend explanations, anomaly narratives,
+                    risk signals, and per-column meaning.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Auto-trigger hint (shown when file selected, before analysis starts) ── -->
+<div id="auto-hint" style="display:none; margin-bottom:24px;" class="anim-slide">
+    <div style="background:var(--bg-card); border:1px solid var(--border);
+         border-radius:var(--radius-lg); padding:20px 24px;
+         display:flex; align-items:center; gap:16px;">
+        <div style="width:40px; height:40px; background:var(--indigo-dim);
+             border:1px solid rgba(99,102,241,0.25); border-radius:var(--radius-lg);
+             display:flex; align-items:center; justify-content:center;
+             font-size:18px; color:var(--indigo); flex-shrink:0;
+             animation:pulseRing 2s infinite;">
+            <i class="ti ti-sparkles" aria-hidden="true"></i>
+        </div>
+        <div style="flex:1;">
+            <div style="font-size:13.5px; font-weight:700; color:var(--text); margin-bottom:3px;"
+                 id="auto-hint-title">Reading dataset...</div>
+            <div style="font-size:12.5px; color:var(--text-3);" id="auto-hint-sub">
+                Generating intelligence automatically
+            </div>
+        </div>
+        <!-- Suggested questions — populated from overview data -->
+        <div id="suggested-questions" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
+    </div>
+</div>
+
+<!-- ── Loading state ── -->
+<div id="loading-state" style="display:none; text-align:center; padding:80px 0;">
+    <div style="width:56px; height:56px; background:var(--indigo-dim);
+         border:1px solid rgba(99,102,241,0.3); border-radius:50%;
+         display:flex; align-items:center; justify-content:center;
+         margin:0 auto 20px; animation:pulseRing 2s infinite;">
+        <i class="ti ti-sparkles" style="font-size:24px; color:var(--indigo);" aria-hidden="true"></i>
+    </div>
+    <div style="font-size:16px; font-weight:600; color:var(--text); margin-bottom:8px;">
+        Analysing your dataset...
+    </div>
+    <div style="font-size:13px; color:var(--text-3); margin-bottom:24px;" id="loading-message">
+        Reading data structure and statistics
+    </div>
+    <div style="width:280px; height:4px; background:var(--border); border-radius:2px;
+         overflow:hidden; margin:0 auto;">
+        <div id="loading-bar" style="height:100%; width:0%; background:var(--indigo);
+             border-radius:2px; transition:width 0.5s ease;"></div>
+    </div>
+</div>
+
+<!-- ── Results ── -->
+<div id="results-area" style="display:none;">
+
+    <!-- Header bar with dataset name + AI badge -->
+    <div class="flex-between mb-24 anim-slide">
+        <div>
+            <div style="font-size:11px; font-weight:600; color:var(--indigo);
+                 text-transform:uppercase; letter-spacing:0.08em; margin-bottom:4px;">
+                NLP INTELLIGENCE REPORT
+            </div>
+            <div style="font-size:20px; font-weight:700; color:var(--text);
+                 letter-spacing:-0.02em;" id="result-filename">—</div>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+            <span id="ai-badge" class="badge badge-blue" style="font-size:11px;">
+                <i class="ti ti-cpu" aria-hidden="true"></i> AI Generated
+            </span>
+            <button class="btn btn-secondary btn-sm" onclick="runAnalysis()">
+                <i class="ti ti-refresh" aria-hidden="true"></i> Re-run
+            </button>
+        </div>
+    </div>
+
+    <!-- Row 1: Summary + Business Context -->
+    <div class="grid-2 mb-20">
+
+        <div class="card anim-slide" id="card-summary">
+            <div class="card-header">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div class="nlp-section-icon" style="background:var(--blue-light); color:var(--blue);">
+                        <i class="ti ti-file-description" aria-hidden="true"></i>
+                    </div>
+                    <div class="card-title">Dataset Summary</div>
+                </div>
+            </div>
+            <p style="font-size:13.5px; color:var(--text-2); line-height:1.75;" id="text-summary">—</p>
+        </div>
+
+        <div class="card anim-slide delay-1" id="card-context">
+            <div class="card-header">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div class="nlp-section-icon" style="background:var(--purple-light); color:var(--purple-text);">
+                        <i class="ti ti-building-store" aria-hidden="true"></i>
+                    </div>
+                    <div class="card-title">Business Context</div>
+                </div>
+            </div>
+            <p style="font-size:13.5px; color:var(--text-2); line-height:1.75;" id="text-context">—</p>
+        </div>
+
+    </div>
+
+    <!-- Row 2: Key Insights (full width) -->
+    <div class="card mb-20 anim-slide delay-1">
+        <div class="card-header">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <div class="nlp-section-icon" style="background:var(--amber-light); color:var(--amber-text);">
+                    <i class="ti ti-bulb" aria-hidden="true"></i>
+                </div>
+                <div>
+                    <div class="card-title">Key Insights</div>
+                    <div class="card-subtitle">Specific findings from your data</div>
+                </div>
+            </div>
+            <span class="badge badge-amber" id="insight-count">—</span>
+        </div>
+        <div id="insights-grid" style="display:grid; grid-template-columns:repeat(2,1fr); gap:10px;"></div>
+    </div>
+
+    <!-- Row 3: Trend + Anomaly narratives -->
+    <div class="grid-2 mb-20">
+
+        <div class="card anim-slide delay-2">
+            <div class="card-header">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div class="nlp-section-icon" style="background:var(--cyan-dim); color:var(--cyan);">
+                        <i class="ti ti-trending-up" aria-hidden="true"></i>
+                    </div>
+                    <div class="card-title">Trend Explanation</div>
+                </div>
+            </div>
+            <p style="font-size:13.5px; color:var(--text-2); line-height:1.75;" id="text-trend">—</p>
+        </div>
+
+        <div class="card anim-slide delay-2">
+            <div class="card-header">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div class="nlp-section-icon" style="background:var(--red-light); color:var(--red-text);">
+                        <i class="ti ti-chart-dots-3" aria-hidden="true"></i>
+                    </div>
+                    <div class="card-title">Anomaly Explanation</div>
+                </div>
+            </div>
+            <p style="font-size:13.5px; color:var(--text-2); line-height:1.75;" id="text-anomaly">—</p>
+        </div>
+
+    </div>
+
+    <!-- Row 4: Risk Signals + Opportunities -->
+    <div class="grid-2 mb-20">
+
+        <div class="card anim-slide delay-3">
+            <div class="card-header">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div class="nlp-section-icon" style="background:var(--red-light); color:var(--red-text);">
+                        <i class="ti ti-antenna" aria-hidden="true"></i>
+                    </div>
+                    <div class="card-title">Risk Signals</div>
+                </div>
+                <span class="badge badge-red" id="risk-count">—</span>
+            </div>
+            <div id="risk-list" style="display:flex; flex-direction:column; gap:8px;"></div>
+        </div>
+
+        <div class="card anim-slide delay-3">
+            <div class="card-header">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div class="nlp-section-icon" style="background:var(--green-light); color:var(--green-text);">
+                        <i class="ti ti-rocket" aria-hidden="true"></i>
+                    </div>
+                    <div class="card-title">Opportunities</div>
+                </div>
+                <span class="badge badge-green" id="opp-count">—</span>
+            </div>
+            <div id="opp-list" style="display:flex; flex-direction:column; gap:8px;"></div>
+        </div>
+
+    </div>
+
+    <!-- Row 5: Column Stories -->
+    <div class="card mb-20 anim-slide delay-4">
+        <div class="card-header">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <div class="nlp-section-icon" style="background:var(--indigo-dim); color:var(--indigo);">
+                    <i class="ti ti-columns" aria-hidden="true"></i>
+                </div>
+                <div>
+                    <div class="card-title">Column Intelligence</div>
+                    <div class="card-subtitle">What each column means in business terms</div>
+                </div>
+            </div>
+        </div>
+        <div id="column-stories" style="display:flex; flex-direction:column; gap:0;"></div>
+    </div>
+
+    <!-- Row 6: Data Quality Narrative -->
+    <div class="card anim-slide delay-4">
+        <div class="card-header">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <div class="nlp-section-icon" style="background:var(--green-light); color:var(--green-text);">
+                    <i class="ti ti-heart-rate-monitor" aria-hidden="true"></i>
+                </div>
+                <div class="card-title">Data Quality Assessment</div>
+            </div>
+        </div>
+        <p style="font-size:13.5px; color:var(--text-2); line-height:1.75;" id="text-quality">—</p>
+
+        <!-- CTA -->
+        <div style="display:flex; gap:10px; margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
+            <button class="btn btn-primary btn-sm" id="investigate-cta">
+                <i class="ti ti-search" aria-hidden="true"></i> Investigate This Dataset
+            </button>
+            <a href="/datasets" class="btn btn-secondary btn-sm">
+                <i class="ti ti-arrow-left" aria-hidden="true"></i> Back to Datasets
+            </a>
+        </div>
+    </div>
+
+</div>
+
+<style>
+.nlp-section-icon {
+    width: 32px; height: 32px;
+    border-radius: var(--radius);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; flex-shrink: 0;
+}
+.insight-card {
+    padding: 14px 16px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    position: relative; overflow: hidden;
+}
+.insight-card::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0; width: 3px;
+    background: var(--indigo);
+    border-radius: 2px 0 0 2px;
+}
+.insight-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px;
+    background: var(--indigo-dim); color: var(--indigo);
+    border-radius: var(--radius-sm); font-size: 10px; font-weight: 700;
+    margin-bottom: 6px;
+}
+.insight-text { font-size: 13px; color: var(--text-2); line-height: 1.6; }
+.signal-row {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 10px 12px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.signal-row-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
+.signal-row-text { font-size: 13px; color: var(--text-2); line-height: 1.55; }
+.col-story-row {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 12px 0; border-bottom: 1px solid var(--border);
+}
+.col-story-row:last-child { border-bottom: none; }
+.col-story-name {
+    font-size: 12.5px; font-weight: 700; color: var(--text);
+    font-family: 'Inter', monospace; min-width: 140px; flex-shrink: 0;
+}
+.col-story-meaning { font-size: 13px; color: var(--text-2); line-height: 1.5; flex: 1; }
+.col-story-notable {
+    font-size: 11.5px; color: var(--text-3);
+    background: var(--bg-hover); padding: 2px 8px; border-radius: 20px;
+    flex-shrink: 0; white-space: nowrap;
+}
+
+/* Suggested question chip */
+.suggest-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 11px; border-radius: 20px;
+    background: var(--bg); border: 1px solid var(--border);
+    color: var(--text-2); font-size: 12px; font-weight: 500;
+    cursor: pointer; transition: all 0.15s; white-space: nowrap;
+}
+.suggest-chip:hover {
+    border-color: var(--indigo, #6366F1);
+    color: var(--indigo, #6366F1);
+    background: var(--indigo-dim);
+}
+
+@keyframes pulseRing {
+    0%   { box-shadow: 0 0 0 0 rgba(99,102,241,0.4); }
+    70%  { box-shadow: 0 0 0 12px rgba(99,102,241,0); }
+    100% { box-shadow: 0 0 0 0 rgba(99,102,241,0); }
+}
+:root {
+    --indigo-dim: rgba(99,102,241,0.10);
+    --cyan-dim:   rgba(6,182,212,0.10);
+}
+@media (max-width: 700px) {
+    #insights-grid { grid-template-columns: 1fr !important; }
+    #suggested-questions { display: none !important; }
+}
+</style>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+requireAuth();
+
+let currentFile    = null;
+let overviewCache  = null; // cached /overview data for suggested questions
+
+window.onload = async () => {
+    await loadFileSelector();
+
+    // Pre-select file from URL param or localStorage — then auto-run
+    const params    = new URLSearchParams(window.location.search);
+    const fileParam = params.get('file') || localStorage.getItem('active_file');
+    if (fileParam) {
+        const sel = document.getElementById('topbar-file-select');
+        sel.value = fileParam;
+        if (sel.value) {
+            currentFile = fileParam;
+            document.getElementById('analyse-btn').disabled = false;
+            // Auto-run immediately
+            await onFileChange(true);
+        }
+    }
+};
+
+/* ─────────────────────────────────────────
+   FILE SELECTOR
+───────────────────────────────────────── */
+async function loadFileSelector() {
+    const res = await apiFetch('/files/list');
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    const sel  = document.getElementById('topbar-file-select');
+
+    if (data.files.length === 0) {
+        sel.innerHTML = '<option value="">No datasets — upload first</option>';
+        return;
+    }
+    sel.innerHTML = '<option value="">Select a dataset...</option>' +
+        data.files.map(f =>
+            `<option value="${f.filename}">${f.filename} (${formatSize(f.size_kb)})</option>`
+        ).join('');
+}
+
+/* ─────────────────────────────────────────
+   FILE CHANGE — auto-trigger analysis
+───────────────────────────────────────── */
+async function onFileChange(autoRun = false) {
+    const val   = document.getElementById('topbar-file-select').value;
+    currentFile = val || null;
+    overviewCache = null;
+
+    document.getElementById('analyse-btn').disabled = !val;
+
+    if (!val) {
+        document.getElementById('results-area').style.display  = 'none';
+        document.getElementById('intro-strip').style.display   = 'block';
+        document.getElementById('auto-hint').style.display     = 'none';
+        return;
+    }
+
+    localStorage.setItem('active_file', val);
+
+    // Show the auto-hint bar immediately with loading state
+    document.getElementById('intro-strip').style.display  = 'none';
+    document.getElementById('auto-hint').style.display    = 'flex';
+    document.getElementById('auto-hint-title').textContent = `Reading ${val}...`;
+    document.getElementById('auto-hint-sub').textContent   = 'Generating intelligence automatically';
+    document.getElementById('suggested-questions').innerHTML = '';
+
+    // Fetch overview data to build smart suggested questions
+    try {
+        const ovRes = await apiFetch(`/api/insights/overview/${encodeURIComponent(val)}`);
+        if (ovRes && ovRes.ok) {
+            overviewCache = await ovRes.json();
+            populateSuggestedQuestions(overviewCache);
+            document.getElementById('auto-hint-title').textContent = val;
+            document.getElementById('auto-hint-sub').textContent =
+                `${(overviewCache.rows||0).toLocaleString()} rows · ${overviewCache.columns||0} columns · ${overviewCache.completeness||100}% complete`;
+        }
+    } catch(e) { /* overview optional */ }
+
+    // Auto-run analysis (either called automatically on init, or manually via dropdown)
+    if (autoRun || !document.getElementById('results-area').dataset.file) {
+        await runAnalysis();
+    }
+}
+
+/* ─────────────────────────────────────────
+   SUGGESTED QUESTIONS from overview data
+───────────────────────────────────────── */
+function populateSuggestedQuestions(overview) {
+    const container = document.getElementById('suggested-questions');
+    const questions = [];
+
+    // Build specific questions from actual data shape
+    if (overview.missing_total > 0) {
+        questions.push('What data quality issues exist?');
+    }
+    if (overview.duplicate_rows > 0) {
+        questions.push(`What caused ${overview.duplicate_rows} duplicates?`);
+    }
+    if (overview.numeric_count >= 2) {
+        questions.push('Which columns are most correlated?');
+    }
+    if (overview.has_date_col) {
+        questions.push('What trends exist over time?');
+    }
+    if (overview.categorical_count > 0) {
+        questions.push('Which segment performs best?');
+    }
+    // Always add one generic
+    questions.push('What should I investigate first?');
+
+    container.innerHTML = questions.slice(0, 3).map(q => `
+        <button class="suggest-chip" onclick="jumpToInvestigation('${escAttr(q)}')">
+            <i class="ti ti-search" style="font-size:11px;" aria-hidden="true"></i> ${escHtml(q)}
+        </button>
+    `).join('');
+}
+
+function jumpToInvestigation(question) {
+    if (!currentFile) return;
+    localStorage.setItem('active_file', currentFile);
+    localStorage.setItem('prefill_question', question);
+    window.location.href = '/chat';
+}
+
+/* ─────────────────────────────────────────
+   RUN ANALYSIS
+───────────────────────────────────────── */
+async function runAnalysis() {
+    if (!currentFile) return;
+
+    localStorage.setItem('active_file', currentFile);
+
+    document.getElementById('intro-strip').style.display   = 'none';
+    document.getElementById('auto-hint').style.display     = 'none';
+    document.getElementById('results-area').style.display  = 'none';
+    document.getElementById('loading-state').style.display = 'block';
+    document.getElementById('analyse-btn').disabled        = true;
+
+    const stages = [
+        [15,  'Reading data structure and column types...'],
+        [35,  'Computing statistics and correlations...'],
+        [55,  'Identifying patterns and anomalies...'],
+        [75,  'Generating natural language intelligence...'],
+        [90,  'Composing business narrative...'],
+    ];
+    let si = 0;
+    const stageInterval = setInterval(() => {
+        if (si < stages.length) {
+            document.getElementById('loading-bar').style.width    = stages[si][0] + '%';
+            document.getElementById('loading-message').textContent = stages[si][1];
+            si++;
+        }
+    }, 1200);
+
+    try {
+        const res = await apiFetch(`/files/nlp-insights/${encodeURIComponent(currentFile)}`);
+        clearInterval(stageInterval);
+        document.getElementById('loading-bar').style.width = '100%';
+        await new Promise(r => setTimeout(r, 300));
+        document.getElementById('loading-state').style.display = 'none';
+
+        if (!res || !res.ok) {
+            showToast('Failed to generate intelligence — check your API key in .env', 'error');
+            document.getElementById('auto-hint').style.display  = 'block';
+            document.getElementById('analyse-btn').disabled     = false;
+            return;
+        }
+
+        const intel = await res.json();
+        renderIntelligence(intel, currentFile);
+
+    } catch(e) {
+        clearInterval(stageInterval);
+        document.getElementById('loading-state').style.display = 'none';
+        document.getElementById('auto-hint').style.display     = 'block';
+        showToast('Analysis failed: ' + e.message, 'error');
+    }
+
+    document.getElementById('analyse-btn').disabled = false;
+}
+
+/* ─────────────────────────────────────────
+   RENDER INTELLIGENCE
+───────────────────────────────────────── */
+function renderIntelligence(intel, filename) {
+    document.getElementById('results-area').style.display = 'block';
+    document.getElementById('results-area').dataset.file  = filename;
+    document.getElementById('result-filename').textContent = filename;
+
+    const badge = document.getElementById('ai-badge');
+    if (intel.generated === false) {
+        badge.innerHTML = '<i class="ti ti-calculator" aria-hidden="true"></i> Rule-Based';
+        badge.className = 'badge badge-gray';
+    } else {
+        badge.innerHTML = '<i class="ti ti-cpu" aria-hidden="true"></i> AI Generated';
+        badge.className = 'badge badge-blue';
+    }
+
+    setText('text-summary',  intel.summary            || 'No summary available.');
+    setText('text-context',  intel.business_context   || 'Business context not determined.');
+    setText('text-trend',    intel.trend_narrative    || 'No trend narrative available.');
+    setText('text-anomaly',  intel.anomaly_narrative  || 'No anomaly information available.');
+    setText('text-quality',  intel.data_quality_narrative || 'No quality assessment available.');
+
+    const insights = intel.key_insights || [];
+    document.getElementById('insight-count').textContent = insights.length;
+    document.getElementById('insights-grid').innerHTML = insights.map((ins, i) => `
+        <div class="insight-card">
+            <div class="insight-num">${i + 1}</div>
+            <div class="insight-text">${escHtml(ins)}</div>
+        </div>
+    `).join('');
+
+    const risks = intel.risk_signals || [];
+    document.getElementById('risk-count').textContent = risks.length;
+    document.getElementById('risk-list').innerHTML = risks.map(r => `
+        <div class="signal-row">
+            <div class="signal-row-dot" style="background:var(--red); box-shadow:0 0 5px var(--red);"></div>
+            <div class="signal-row-text">${escHtml(r)}</div>
+        </div>
+    `).join('') || '<div class="text-dim" style="font-size:13px; padding:8px 0;">No critical risks detected.</div>';
+
+    const opps = intel.opportunities || [];
+    document.getElementById('opp-count').textContent = opps.length;
+    document.getElementById('opp-list').innerHTML = opps.map(o => `
+        <div class="signal-row">
+            <div class="signal-row-dot" style="background:var(--green); box-shadow:0 0 5px var(--green);"></div>
+            <div class="signal-row-text">${escHtml(o)}</div>
+        </div>
+    `).join('') || '<div class="text-dim" style="font-size:13px; padding:8px 0;">No opportunities identified.</div>';
+
+    const stories = intel.column_stories || [];
+    document.getElementById('column-stories').innerHTML = stories.map(s => `
+        <div class="col-story-row">
+            <div class="col-story-name">${escHtml(s.column)}</div>
+            <div class="col-story-meaning">${escHtml(s.meaning || '—')}</div>
+            ${s.notable ? `<div class="col-story-notable">${escHtml(s.notable)}</div>` : ''}
+        </div>
+    `).join('') || '<div class="text-dim" style="font-size:13px; padding:12px 0;">No column analysis available.</div>';
+
+    document.getElementById('investigate-cta').onclick = () => {
+        localStorage.setItem('active_file', filename);
+        window.location.href = '/chat';
+    };
+
+    document.getElementById('results-area').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/* ─────────────────────────────────────────
+   HELPERS
+───────────────────────────────────────── */
+function setText(id, text) {
+    document.getElementById(id).textContent = text;
+}
+
+function escHtml(str) {
+    return String(str)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function escAttr(str) {
+    return String(str).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
+function formatSize(kb) {
+    if (kb >= 1024) return (kb / 1024).toFixed(1) + ' MB';
+    return kb.toFixed(1) + ' KB';
+}
+</script>
+{% endblock %}

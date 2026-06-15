@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.env
+venv/
+data/qdrant/*
+data/reports/*
+data/uploads/*
+!data/uploads/.gitkeep
+!data/qdrant/.gitkeep
+!data/reports/.gitkeep

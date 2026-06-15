@@ -1,0 +1,897 @@
+{% extends "base.html" %}
+{% block title %}Settings — ABIP{% endblock %}
+{% block breadcrumb %}Settings{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-secondary btn-sm" id="btn-discard" onclick="discardChanges()" disabled>
+    <i class="ti ti-x" aria-hidden="true"></i> Discard
+</button>
+<button class="btn btn-primary btn-sm" id="btn-save" onclick="saveChanges()" disabled>
+    <i class="ti ti-device-floppy" aria-hidden="true"></i> Save Changes
+</button>
+{% endblock %}
+
+{% block content %}
+
+<style>
+/* ── Layout ── */
+.settings-layout {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 24px;
+    align-items: start;
+}
+@media (max-width: 768px) {
+    .settings-layout { grid-template-columns: 1fr; }
+    .settings-nav { display: none; }
+}
+
+/* ── Sidebar nav ── */
+.settings-nav {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 8px;
+    position: sticky;
+    top: 80px;
+}
+.settings-nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px; border-radius: var(--radius);
+    font-size: 13px; color: var(--text-2);
+    cursor: pointer; transition: all 0.15s;
+    border: none; background: none; width: 100%; text-align: left;
+    font-weight: 500;
+}
+.settings-nav-item:hover { background: var(--bg-hover); color: var(--text); }
+.settings-nav-item.active { background: var(--blue-light, rgba(59,130,246,0.1)); color: var(--blue); font-weight: 600; }
+.settings-nav-item i { font-size: 15px; flex-shrink: 0; }
+.settings-nav-sep { height: 1px; background: var(--border); margin: 6px 0; }
+.settings-nav-group { font-size: 10.5px; font-weight: 700; color: var(--text-4); text-transform: uppercase;
+    letter-spacing: 0.07em; padding: 8px 12px 4px; }
+
+/* ── Section ── */
+.settings-section { display: none; }
+.settings-section.active { display: block; }
+
+/* ── Setting row ── */
+.setting-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 16px;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+}
+.setting-row:last-child { border-bottom: none; }
+.setting-row-full { grid-template-columns: 1fr; }
+.setting-label { font-size: 13.5px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+.setting-desc  { font-size: 12px; color: var(--text-3); line-height: 1.5; }
+.setting-control { display: flex; align-items: center; gap: 8px; justify-content: flex-end; min-width: 200px; }
+
+/* ── Section header ── */
+.section-header {
+    padding: 18px 20px 14px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 0;
+}
+.section-title { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 3px; }
+.section-desc  { font-size: 12.5px; color: var(--text-3); }
+
+/* ── Toggle switch ── */
+.toggle-wrap { display: flex; align-items: center; gap: 10px; }
+.toggle {
+    position: relative; width: 40px; height: 22px;
+    background: var(--border); border-radius: 11px;
+    cursor: pointer; transition: background 0.2s;
+    flex-shrink: 0;
+}
+.toggle.on { background: var(--blue); }
+.toggle-knob {
+    position: absolute; top: 3px; left: 3px;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: #fff; transition: transform 0.2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.toggle.on .toggle-knob { transform: translateX(18px); }
+
+/* ── API key row ── */
+.api-key-row {
+    display: flex; align-items: center; gap: 8px; padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+}
+.api-key-row:last-child { border-bottom: none; }
+.api-key-icon {
+    width: 32px; height: 32px; border-radius: var(--radius);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; flex-shrink: 0;
+    background: var(--bg-hover);
+}
+.api-key-input-wrap { position: relative; flex: 1; }
+.api-key-input-wrap input { padding-right: 38px; font-family: monospace; font-size: 12.5px; }
+.api-key-toggle {
+    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    color: var(--text-3); cursor: pointer; font-size: 14px; line-height: 1;
+    border: none; background: none; padding: 4px;
+}
+.api-key-status {
+    font-size: 10.5px; font-weight: 700; padding: 3px 8px;
+    border-radius: 10px; flex-shrink: 0;
+}
+.api-key-status.valid   { background: rgba(34,197,94,0.12); color: var(--green); }
+.api-key-status.invalid { background: rgba(239,68,68,0.12); color: var(--red); }
+.api-key-status.unknown { background: var(--bg-hover); color: var(--text-3); }
+
+/* ── Slider ── */
+.slider-wrap { display: flex; align-items: center; gap: 10px; }
+.slider-wrap input[type=range] {
+    -webkit-appearance: none; width: 140px; height: 4px;
+    border-radius: 2px; background: var(--border); outline: none; cursor: pointer;
+}
+.slider-wrap input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+    background: var(--blue); cursor: pointer; border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+.slider-val { font-size: 13px; font-weight: 600; color: var(--text); min-width: 32px; text-align: right; }
+
+/* ── Danger zone ── */
+.danger-card {
+    border: 1px solid var(--red, #ef4444);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+}
+.danger-card .section-header { border-bottom-color: rgba(239,68,68,0.3); }
+.danger-action-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px; border-bottom: 1px solid rgba(239,68,68,0.15);
+    gap: 16px;
+}
+.danger-action-row:last-child { border-bottom: none; }
+
+/* ── Info callout ── */
+.callout {
+    display: flex; gap: 10px; padding: 12px 14px;
+    border-radius: var(--radius); font-size: 12.5px; line-height: 1.55;
+}
+.callout-warn { background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); color: var(--text-2); }
+.callout-info { background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.2); color: var(--text-2); }
+.callout i { flex-shrink: 0; margin-top: 1px; }
+
+/* ── Save indicator ── */
+#unsaved-bar {
+    display: none;
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: 10px 18px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+    display: flex; align-items: center; gap: 10px;
+    font-size: 13px; color: var(--text-2);
+    z-index: 100; animation: slideUp 0.2s ease;
+}
+@keyframes slideUp { from { opacity:0; transform:translateX(-50%) translateY(10px); } }
+</style>
+
+<!-- Page header -->
+<div class="page-header mb-24 anim-slide">
+    <div>
+        <div class="page-title">Settings</div>
+        <div class="page-subtitle">Configure AI providers, API keys, and workspace behaviour</div>
+    </div>
+    <div id="settings-status" style="display:none; align-items:center; gap:8px; padding:6px 14px;
+         background:var(--amber-light,rgba(245,158,11,.08)); border:1px solid rgba(245,158,11,.3);
+         border-radius:var(--radius); font-size:12px; color:var(--amber,#f59e0b);">
+        <i class="ti ti-pencil" aria-hidden="true"></i>
+        Unsaved changes
+    </div>
+</div>
+
+<div class="settings-layout anim-slide">
+
+    <!-- LEFT: Nav -->
+    <nav class="settings-nav" aria-label="Settings navigation">
+        <div class="settings-nav-group">AI & Models</div>
+        <button class="settings-nav-item active" onclick="showSection('ai-models')" data-section="ai-models">
+            <i class="ti ti-brain" aria-hidden="true"></i> AI Models
+        </button>
+        <button class="settings-nav-item" onclick="showSection('api-keys')" data-section="api-keys">
+            <i class="ti ti-key" aria-hidden="true"></i> API Keys
+        </button>
+        <div class="settings-nav-sep"></div>
+        <div class="settings-nav-group">Workspace</div>
+        <button class="settings-nav-item" onclick="showSection('workspace')" data-section="workspace">
+            <i class="ti ti-building" aria-hidden="true"></i> Workspace
+        </button>
+        <button class="settings-nav-item" onclick="showSection('account')" data-section="account">
+            <i class="ti ti-user" aria-hidden="true"></i> Account
+        </button>
+        <div class="settings-nav-sep"></div>
+        <button class="settings-nav-item" onclick="showSection('danger')" data-section="danger"
+                style="color:var(--red,#ef4444);">
+            <i class="ti ti-alert-triangle" aria-hidden="true"></i> Danger Zone
+        </button>
+    </nav>
+
+    <!-- RIGHT: Sections -->
+    <div>
+        <!-- Loading state -->
+        <div id="settings-loading" class="card" style="padding:48px;text-align:center;">
+            <div class="spinner spinner-lg" style="margin:0 auto 16px;"></div>
+            <div class="text-dim">Loading settings…</div>
+        </div>
+
+        <!-- ══ AI Models ══════════════════════════════════════ -->
+        <div id="section-ai-models" class="settings-section">
+            <div class="card">
+                <div class="section-header">
+                    <div class="section-title">AI Models</div>
+                    <div class="section-desc">Configure which LLM providers power your agents and analysis pipeline</div>
+                </div>
+
+                <div class="setting-row">
+                    <div>
+                        <div class="setting-label">Primary Provider</div>
+                        <div class="setting-desc">Main LLM used for analysis, reasoning, and report generation</div>
+                    </div>
+                    <div class="setting-control">
+                        <select class="form-input" id="primary_provider" style="width:180px;" onchange="markDirty()">
+                            <option value="gemini">Google Gemini</option>
+                            <option value="groq">Groq</option>
+                            <option value="openrouter">OpenRouter</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="setting-row">
+                    <div>
+                        <div class="setting-label">Gemini Model</div>
+                        <div class="setting-desc">Model variant used when Gemini is the active provider</div>
+                    </div>
+                    <div class="setting-control">
+                        <select class="form-input" id="gemini_model" style="width:220px;" onchange="markDirty()">
+                            <option value="gemini-2.0-flash">gemini-2.0-flash (recommended)</option>
+                            <option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite (fast)</option>
+                            <option value="gemini-1.5-pro">gemini-1.5-pro (powerful)</option>
+                            <option value="gemini-1.5-flash">gemini-1.5-flash</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="setting-row">
+                    <div>
+                        <div class="setting-label">Groq Model</div>
+                        <div class="setting-desc">Model variant used for fast, low-latency Groq inference</div>
+                    </div>
+                    <div class="setting-control">
+                        <select class="form-input" id="groq_model" style="width:220px;" onchange="markDirty()">
+                            <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile</option>
+                            <option value="llama-3.1-8b-instant">llama-3.1-8b-instant (fastest)</option>
+                            <option value="mixtral-8x7b-32768">mixtral-8x7b-32768</option>
+                            <option value="gemma2-9b-it">gemma2-9b-it</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="setting-row">
+                    <div>
+                        <div class="setting-label">Max Tokens</div>
+                        <div class="setting-desc">Maximum output tokens per agent response. Higher = more detailed, slower, costlier.</div>
+                    </div>
+                    <div class="setting-control">
+                        <select class="form-input" id="max_tokens" style="width:180px;" onchange="markDirty()">
+                            <option value="1024">1,024 — compact</option>
+                            <option value="2048">2,048</option>
+                            <option value="4096">4,096 (default)</option>
+                            <option value="8192">8,192 — detailed</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="setting-row">
+                    <div>
+                        <div class="setting-label">Temperature</div>
+                        <div class="setting-desc">Response creativity. 0 = precise and deterministic, 1 = creative and varied.</div>
+                    </div>
+                    <div class="setting-control">
+                        <div class="slider-wrap">
+                            <input type="range" min="0" max="1" step="0.05" value="0.3" id="temperature"
+                                   oninput="document.getElementById('temp-val').textContent=parseFloat(this.value).toFixed(2); markDirty();" />
+                            <span class="slider-val" id="temp-val">0.30</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="setting-row">
+                    <div>
+                        <div class="setting-label">Streaming Responses</div>
+                        <div class="setting-desc">Stream AI output token-by-token for a live feel. Disable for batch jobs.</div>
+                    </div>
+                    <div class="setting-control">
+                        <div class="toggle-wrap">
+                            <div class="toggle on" id="toggle-streaming" onclick="toggleSetting('streaming')" role="switch" aria-checked="true" tabindex="0"></div>
+                            <div class="toggle-knob"></div>
+                            <span id="label-streaming" style="font-size:12.5px;color:var(--text-3);">Enabled</span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- ══ API Keys ═══════════════════════════════════════ -->
+        <div id="section-api-keys" class="settings-section">
+            <div class="card">
+                <div class="section-header">
+                    <div class="section-title">API Keys</div>
+                    <div class="section-desc">Keys are stored in your server's <code style="font-size:11px;background:var(--bg-hover);padding:1px 5px;border-radius:3px;">.env</code> file. Restart the server after saving.</div>
+                </div>
+
+                <div style="padding:14px 20px;">
+                    <div class="callout callout-warn">
+                        <i class="ti ti-shield-lock" aria-hidden="true"></i>
+                        <span>API keys are write-only — existing values are masked for security and never sent to the browser. Paste a new key to update it, or leave blank to keep the current value.</span>
+                    </div>
+                </div>
+
+                <div id="api-keys-list">
+                    <!-- Rendered by JS -->
+                </div>
+
+            </div>
+        </div>
+
+        <!-- ══ Workspace ══════════════════════════════════════ -->
+        <div id="section-workspace" class="settings-section">
+            <div class="card">
+                <div class="section-header">
+                    <div class="section-title">Workspace</div>
+                    <div class="section-desc">Data retention, file handling, and investigation behaviour</div>
+                </div>
+
+                <div class="setting-row">
+                    <div>
+                        <div class="setting-label">Auto-delete Uploads</div>
+                        <div class="setting-desc">Automatically delete uploaded files after analysis completes to save disk space.</div>
+                    </div>
+                    <div class="setting-control">
+                        <div class="toggle on" id="toggle-autodelete" onclick="toggleSetting('autodelete')" role="switch" aria-checked="false" tabindex="0">
+                            <div class="toggle-knob"></div>
+                        </div>
+                        <span id="label-autodelete" style="font-size:12.5px;color:var(--text-3);">Off</span>
+                    </div>
+                </div>
+
+                <div class="setting-row">
+                    <div>
+                        <div class="setting-label">Max Upload Size</div>
+                        <div class="setting-desc">Maximum file size per dataset upload.</div>
+                    </div>
+                    <div class="setting-control">
+                        <select class="form-input" id="max_upload_mb" style="width:140px;" onchange="markDirty()">
+                            <option value="10">10 MB</option>
+                            <option value="50">50 MB</option>
+                            <option value="100" selected>100 MB</option>
+                            <option value="500">500 MB</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="setting-row">
+                    <div>
+                        <div class="setting-label">Investigation Timeout</div>
+                        <div class="setting-desc">Maximum time (in minutes) an agent can run before being terminated.</div>
+                    </div>
+                    <div class="setting-control">
+                        <select class="form-input" id="inv_timeout_min" style="width:140px;" onchange="markDirty()">
+                            <option value="5">5 min</option>
+                            <option value="10" selected>10 min</option>
+                            <option value="20">20 min</option>
+                            <option value="60">60 min</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="setting-row">
+                    <div>
+                        <div class="setting-label">Memory / RAG</div>
+                        <div class="setting-desc">Enable long-term vector memory so agents learn from past investigations.</div>
+                    </div>
+                    <div class="setting-control">
+                        <div class="toggle on" id="toggle-rag" onclick="toggleSetting('rag')" role="switch" aria-checked="true" tabindex="0">
+                            <div class="toggle-knob"></div>
+                        </div>
+                        <span id="label-rag" style="font-size:12.5px;color:var(--text-3);">Enabled</span>
+                    </div>
+                </div>
+
+                <div class="setting-row">
+                    <div>
+                        <div class="setting-label">Domain Auto-detection</div>
+                        <div class="setting-desc">Let the system automatically detect the business domain of each investigation.</div>
+                    </div>
+                    <div class="setting-control">
+                        <div class="toggle on" id="toggle-domain" onclick="toggleSetting('domain')" role="switch" aria-checked="true" tabindex="0">
+                            <div class="toggle-knob"></div>
+                        </div>
+                        <span id="label-domain" style="font-size:12.5px;color:var(--text-3);">Enabled</span>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- ══ Account ════════════════════════════════════════ -->
+        <div id="section-account" class="settings-section">
+            <div class="card">
+                <div class="section-header">
+                    <div class="setting-title">Account</div>
+                    <div class="section-desc">Your profile and authentication settings</div>
+                </div>
+
+                <div style="padding:18px 20px; border-bottom:1px solid var(--border);">
+                    <div style="display:flex; align-items:center; gap:14px; margin-bottom:18px;">
+                        <div style="width:52px;height:52px;border-radius:50%;background:var(--blue);
+                             display:flex;align-items:center;justify-content:center;font-size:20px;
+                             font-weight:700;color:#fff;flex-shrink:0;" id="acct-avatar">H</div>
+                        <div>
+                            <div style="font-size:15px;font-weight:700;color:var(--text);" id="acct-name">—</div>
+                            <div style="font-size:12.5px;color:var(--text-3);" id="acct-role">—</div>
+                        </div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <div>
+                            <label class="form-label" for="acct-username">Display Name</label>
+                            <input class="form-input" id="acct-username" type="text" placeholder="Your name" oninput="markDirty()" />
+                        </div>
+                        <div>
+                            <label class="form-label" for="acct-email">Email</label>
+                            <input class="form-input" id="acct-email" type="email" placeholder="you@example.com" oninput="markDirty()" />
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section-header" style="border-top:none;">
+                    <div class="section-title" style="font-size:13px;">Change Password</div>
+                </div>
+                <div style="padding:14px 20px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                    <div>
+                        <label class="form-label" for="acct-pass">New Password</label>
+                        <input class="form-input" id="acct-pass" type="password" placeholder="••••••••" oninput="markDirty()" />
+                    </div>
+                    <div>
+                        <label class="form-label" for="acct-pass2">Confirm Password</label>
+                        <input class="form-input" id="acct-pass2" type="password" placeholder="••••••••" oninput="markDirty()" />
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- ══ Danger Zone ════════════════════════════════════ -->
+        <div id="section-danger" class="settings-section">
+            <div class="danger-card">
+                <div class="section-header" style="background:rgba(239,68,68,0.04);">
+                    <div class="section-title" style="color:var(--red,#ef4444);">
+                        <i class="ti ti-alert-triangle" aria-hidden="true"></i> Danger Zone
+                    </div>
+                    <div class="section-desc">These actions are destructive and cannot be undone. Proceed with caution.</div>
+                </div>
+
+                <div class="danger-action-row">
+                    <div>
+                        <div class="setting-label">Clear All Investigations</div>
+                        <div class="setting-desc">Delete all investigation history and agent results from the database.</div>
+                    </div>
+                    <button class="btn btn-sm" style="background:rgba(239,68,68,.1);color:var(--red,#ef4444);border:1px solid rgba(239,68,68,.3);flex-shrink:0;"
+                            onclick="dangerAction('clear-investigations')">
+                        <i class="ti ti-trash" aria-hidden="true"></i> Clear Investigations
+                    </button>
+                </div>
+
+                <div class="danger-action-row">
+                    <div>
+                        <div class="setting-label">Delete All Uploaded Files</div>
+                        <div class="setting-desc">Remove all datasets from the uploads directory on the server.</div>
+                    </div>
+                    <button class="btn btn-sm" style="background:rgba(239,68,68,.1);color:var(--red,#ef4444);border:1px solid rgba(239,68,68,.3);flex-shrink:0;"
+                            onclick="dangerAction('clear-uploads')">
+                        <i class="ti ti-file-x" aria-hidden="true"></i> Delete Uploads
+                    </button>
+                </div>
+
+                <div class="danger-action-row">
+                    <div>
+                        <div class="setting-label">Purge Vector Memory</div>
+                        <div class="setting-desc">Clear the Qdrant vector store. Agents will lose all long-term memory.</div>
+                    </div>
+                    <button class="btn btn-sm" style="background:rgba(239,68,68,.1);color:var(--red,#ef4444);border:1px solid rgba(239,68,68,.3);flex-shrink:0;"
+                            onclick="dangerAction('purge-memory')">
+                        <i class="ti ti-database-x" aria-hidden="true"></i> Purge Memory
+                    </button>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* ══════════════════════════════════════════════════════════════
+   SETTINGS PAGE — reads/writes real .env + DB settings
+   ══════════════════════════════════════════════════════════════ */
+
+requireAuth();
+
+/* ── State ── */
+const SETTINGS = {
+    dirty: false,
+    original: {},
+    current: {},
+    toggles: { streaming: true, autodelete: false, rag: true, domain: true },
+};
+
+/* ── Boot ── */
+window.__settingsPageReady = window.__settingsPageReady || false;
+
+function initSettings() {
+    if (window.__settingsPageReady) {
+        // Re-apply from cache — don't re-fetch
+        applySettingsToUI(SETTINGS.original);
+        return;
+    }
+    loadSettings();
+}
+
+async function loadSettings() {
+    try {
+        const res = await apiFetch('/settings/get');
+        if (!res || !res.ok) throw new Error('Could not load settings');
+        const data = await res.json();
+
+        SETTINGS.original = JSON.parse(JSON.stringify(data));
+        SETTINGS.current  = JSON.parse(JSON.stringify(data));
+        window.__settingsPageReady = true;
+
+        applySettingsToUI(data);
+
+    } catch (err) {
+        console.error('Settings load error:', err);
+        // Show fallback with defaults
+        applySettingsToUI({});
+        showCallout('Could not connect to settings API — showing defaults. Changes will be saved when the server is reachable.', 'warn');
+    } finally {
+        document.getElementById('settings-loading').style.display = 'none';
+        document.querySelectorAll('.settings-section').forEach(s => {
+            if (s.classList.contains('active')) s.style.display = 'block';
+        });
+    }
+}
+
+function applySettingsToUI(data) {
+    // AI model settings
+    setSelect('primary_provider', data.primary_provider || 'gemini');
+    setSelect('gemini_model',     data.gemini_model     || 'gemini-2.0-flash');
+    setSelect('groq_model',       data.groq_model       || 'llama-3.3-70b-versatile');
+    setSelect('max_tokens',       String(data.max_tokens || 4096));
+    const temp = data.temperature !== undefined ? data.temperature : 0.3;
+    const tempEl = document.getElementById('temperature');
+    if (tempEl) { tempEl.value = temp; document.getElementById('temp-val').textContent = parseFloat(temp).toFixed(2); }
+
+    // Toggles
+    setToggle('streaming',  data.streaming  !== false);
+    setToggle('autodelete', data.autodelete === true);
+    setToggle('rag',        data.rag        !== false);
+    setToggle('domain',     data.domain     !== false);
+
+    // Workspace
+    setSelect('max_upload_mb',   String(data.max_upload_mb  || 100));
+    setSelect('inv_timeout_min', String(data.inv_timeout_min || 10));
+
+    // Account
+    if (data.user) {
+        document.getElementById('acct-name').textContent = data.user.username || '—';
+        document.getElementById('acct-role').textContent = data.user.role     || 'Analyst';
+        document.getElementById('acct-username').value   = data.user.username || '';
+        document.getElementById('acct-email').value      = data.user.email    || '';
+        const av = document.getElementById('acct-avatar');
+        if (av && data.user.username) av.textContent = data.user.username[0].toUpperCase();
+    }
+
+    // API keys (masked)
+    renderApiKeys(data.api_keys_present || {});
+
+    SETTINGS.dirty = false;
+    updateDirtyUI();
+}
+
+function setSelect(id, value) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    // Find option or add dynamic one
+    let found = false;
+    for (const opt of el.options) { if (opt.value === value) { opt.selected = true; found = true; break; } }
+    if (!found) {
+        const opt = document.createElement('option');
+        opt.value = value; opt.textContent = value; opt.selected = true;
+        el.appendChild(opt);
+    }
+}
+
+/* ── API Keys ── */
+const API_KEY_DEFS = [
+    { key: 'GEMINI_API_KEY',      label: 'Google Gemini',  icon: 'ti-brand-google',    color: '#4285F4' },
+    { key: 'GROQ_API_KEY',        label: 'Groq',           icon: 'ti-bolt',             color: '#F55036' },
+    { key: 'OPENROUTER_API_KEY',  label: 'OpenRouter',     icon: 'ti-route',            color: '#7C3AED' },
+    { key: 'QDRANT_API_KEY',      label: 'Qdrant (optional)', icon: 'ti-database',     color: '#22C55E' },
+];
+
+function renderApiKeys(present) {
+    const wrap = document.getElementById('api-keys-list');
+    if (!wrap) return;
+    wrap.innerHTML = API_KEY_DEFS.map(def => {
+        const hasKey = !!present[def.key];
+        return `
+        <div class="api-key-row">
+            <div class="api-key-icon" style="color:${def.color};">
+                <i class="ti ${def.icon}" aria-hidden="true"></i>
+            </div>
+            <div style="min-width:120px;">
+                <div style="font-size:13px;font-weight:600;color:var(--text);">${def.label}</div>
+                <div style="font-size:11px;color:var(--text-3);">${def.key}</div>
+            </div>
+            <div class="api-key-input-wrap">
+                <input class="form-input" id="key-${def.key}" type="password"
+                       placeholder="${hasKey ? '••••••••••••  (set — paste to update)' : 'Paste key here…'}"
+                       oninput="markDirty()" autocomplete="off" spellcheck="false" />
+                <button class="api-key-toggle" onclick="toggleKeyVis('key-${def.key}', this)" title="Show/hide">
+                    <i class="ti ti-eye" aria-hidden="true"></i>
+                </button>
+            </div>
+            <div class="api-key-status ${hasKey ? 'valid' : 'unknown'}" id="status-${def.key}">
+                ${hasKey ? '✓ SET' : 'NOT SET'}
+            </div>
+            ${hasKey ? `<button class="btn btn-ghost btn-sm" style="font-size:11px;padding:4px 8px;color:var(--red,#ef4444);"
+                onclick="confirmClearKey('${def.key}')">Clear</button>` : ''}
+        </div>`;
+    }).join('');
+}
+
+function toggleKeyVis(inputId, btn) {
+    const el = document.getElementById(inputId);
+    if (!el) return;
+    if (el.type === 'password') {
+        el.type = 'text';
+        btn.innerHTML = '<i class="ti ti-eye-off" aria-hidden="true"></i>';
+    } else {
+        el.type = 'password';
+        btn.innerHTML = '<i class="ti ti-eye" aria-hidden="true"></i>';
+    }
+}
+
+async function confirmClearKey(key) {
+    if (!confirm(`Clear ${key}? This will remove it from your .env file.`)) return;
+    const res = await apiFetch('/settings/clear-key', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key }),
+    });
+    if (res && res.ok) {
+        showToastMsg('Key cleared. Restart the server to apply.', 'success');
+        const statusEl = document.getElementById('status-' + key);
+        if (statusEl) { statusEl.className = 'api-key-status unknown'; statusEl.textContent = 'NOT SET'; }
+    } else {
+        showToastMsg('Failed to clear key.', 'error');
+    }
+}
+
+/* ── Toggle helpers ── */
+function setToggle(name, value) {
+    SETTINGS.toggles[name] = value;
+    const el = document.getElementById('toggle-' + name);
+    const lb = document.getElementById('label-' + name);
+    if (!el) return;
+    if (value) {
+        el.classList.add('on');
+        el.setAttribute('aria-checked', 'true');
+        if (lb) lb.textContent = 'Enabled';
+    } else {
+        el.classList.remove('on');
+        el.setAttribute('aria-checked', 'false');
+        if (lb) lb.textContent = 'Off';
+    }
+}
+
+function toggleSetting(name) {
+    const newVal = !SETTINGS.toggles[name];
+    setToggle(name, newVal);
+    markDirty();
+}
+
+/* ── Dirty state ── */
+function markDirty() {
+    SETTINGS.dirty = true;
+    updateDirtyUI();
+}
+
+function updateDirtyUI() {
+    const statusEl = document.getElementById('settings-status');
+    const saveBtn  = document.getElementById('btn-save');
+    const discardBtn = document.getElementById('btn-discard');
+    if (SETTINGS.dirty) {
+        if (statusEl)   statusEl.style.display = 'flex';
+        if (saveBtn)    saveBtn.disabled = false;
+        if (discardBtn) discardBtn.disabled = false;
+    } else {
+        if (statusEl)   statusEl.style.display = 'none';
+        if (saveBtn)    saveBtn.disabled = true;
+        if (discardBtn) discardBtn.disabled = true;
+    }
+}
+
+/* ── Save ── */
+async function saveChanges() {
+    const btn = document.getElementById('btn-save');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ti ti-loader-2 ti-spin" aria-hidden="true"></i> Saving…';
+
+    try {
+        // Build payload
+        const payload = {
+            primary_provider: getVal('primary_provider'),
+            gemini_model:     getVal('gemini_model'),
+            groq_model:       getVal('groq_model'),
+            max_tokens:       parseInt(getVal('max_tokens')) || 4096,
+            temperature:      parseFloat(document.getElementById('temperature')?.value || 0.3),
+            streaming:        SETTINGS.toggles.streaming,
+            autodelete:       SETTINGS.toggles.autodelete,
+            rag:              SETTINGS.toggles.rag,
+            domain:           SETTINGS.toggles.domain,
+            max_upload_mb:    parseInt(getVal('max_upload_mb')) || 100,
+            inv_timeout_min:  parseInt(getVal('inv_timeout_min')) || 10,
+            // API keys — only include non-empty ones (user pasted a new key)
+            api_keys: {},
+            // Account
+            account: {
+                username: getVal('acct-username'),
+                email:    getVal('acct-email'),
+                password: getVal('acct-pass') || undefined,
+                password2: getVal('acct-pass2') || undefined,
+            },
+        };
+
+        // Collect any pasted API keys
+        API_KEY_DEFS.forEach(def => {
+            const val = document.getElementById('key-' + def.key)?.value.trim();
+            if (val) payload.api_keys[def.key] = val;
+        });
+
+        // Validate passwords
+        if (payload.account.password && payload.account.password !== payload.account.password2) {
+            showToastMsg('Passwords do not match.', 'error');
+            return;
+        }
+        if (!payload.account.password) {
+            delete payload.account.password;
+            delete payload.account.password2;
+        }
+
+        const res = await apiFetch('/settings/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+
+        if (res && res.ok) {
+            const result = await res.json();
+            SETTINGS.dirty = false;
+            SETTINGS.original = { ...payload };
+            updateDirtyUI();
+            showToastMsg(result.message || 'Settings saved. Restart the server if you changed API keys.', 'success');
+            // Clear pasted keys from inputs for security
+            API_KEY_DEFS.forEach(def => {
+                const el = document.getElementById('key-' + def.key);
+                if (el) el.value = '';
+            });
+            // Clear password fields
+            ['acct-pass','acct-pass2'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
+            // Re-load to refresh key statuses
+            window.__settingsPageReady = false;
+            loadSettings();
+        } else {
+            const err = res ? await res.json().catch(()=>({})) : {};
+            showToastMsg(err.detail || 'Save failed. Check server logs.', 'error');
+        }
+
+    } catch (err) {
+        console.error('Save settings error:', err);
+        showToastMsg('Network error: ' + err.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="ti ti-device-floppy" aria-hidden="true"></i> Save Changes';
+    }
+}
+
+function discardChanges() {
+    SETTINGS.dirty = false;
+    applySettingsToUI(SETTINGS.original);
+    showToastMsg('Changes discarded.', 'info');
+}
+
+/* ── Danger actions ── */
+async function dangerAction(action) {
+    const labels = {
+        'clear-investigations': 'Delete ALL investigation history? This cannot be undone.',
+        'clear-uploads':        'Delete ALL uploaded files? This cannot be undone.',
+        'purge-memory':         'Purge vector memory? Agents will lose all learned context.',
+    };
+    if (!confirm(labels[action] || 'Are you sure?')) return;
+
+    const res = await apiFetch('/settings/danger/' + action, { method: 'POST' });
+    if (res && res.ok) {
+        showToastMsg('Done. ' + (action === 'clear-investigations' ? 'Investigations cleared.' :
+                                  action === 'clear-uploads' ? 'Uploads deleted.' : 'Memory purged.'), 'success');
+    } else {
+        showToastMsg('Action failed. Check server logs.', 'error');
+    }
+}
+
+/* ── Section nav ── */
+function showSection(name) {
+    document.querySelectorAll('.settings-section').forEach(s => s.style.display = 'none');
+    document.querySelectorAll('.settings-nav-item').forEach(b => b.classList.remove('active'));
+    const sec = document.getElementById('section-' + name);
+    if (sec) sec.style.display = 'block';
+    const navBtn = document.querySelector(`[data-section="${name}"]`);
+    if (navBtn) navBtn.classList.add('active');
+}
+
+/* ── Toast helper ── */
+function showToastMsg(msg, type) {
+    if (window.showToast) { window.showToast(msg, type); return; }
+    // Fallback minimal toast
+    const t = document.createElement('div');
+    const colors = { success:'#22c55e', error:'#ef4444', info:'#3b82f6', warn:'#f59e0b' };
+    t.style.cssText = `position:fixed;bottom:20px;right:20px;z-index:9999;
+        background:var(--bg-card);border:1px solid var(--border);border-radius:8px;
+        padding:12px 16px;font-size:13px;color:var(--text);
+        box-shadow:0 4px 20px rgba(0,0,0,.15);max-width:340px;
+        border-left:3px solid ${colors[type]||colors.info};`;
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 4000);
+}
+
+function showCallout(msg, type) {
+    const wrap = document.getElementById('section-ai-models');
+    if (!wrap) return;
+    const div = document.createElement('div');
+    div.style.padding = '14px 20px';
+    div.innerHTML = `<div class="callout callout-${type}">
+        <i class="ti ti-info-circle" aria-hidden="true"></i><span>${escHtml(msg)}</span></div>`;
+    wrap.querySelector('.card')?.prepend(div);
+}
+
+/* ── Helpers ── */
+function getVal(id) { return document.getElementById(id)?.value || ''; }
+function escHtml(str) {
+    return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/* ── Boot ── */
+document.addEventListener('DOMContentLoaded', () => {
+    // Hide all sections initially
+    document.querySelectorAll('.settings-section').forEach(s => s.style.display = 'none');
+    initSettings();
+    showSection('ai-models'); // default tab
+});
+if (document.readyState !== 'loading') {
+    document.querySelectorAll('.settings-section').forEach(s => s.style.display = 'none');
+    initSettings();
+    showSection('ai-models');
+}
+</script>
+{% endblock %}

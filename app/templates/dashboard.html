@@ -1,0 +1,1334 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — ABIP{% endblock %}
+{% block breadcrumb %}Dashboard{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-secondary btn-sm" onclick="loadAll()">
+    <i class="ti ti-refresh" aria-hidden="true"></i> Refresh
+</button>
+<button class="btn btn-primary btn-sm" onclick="openUploadModal()">
+    <i class="ti ti-upload" aria-hidden="true"></i> Upload Dataset
+</button>
+<input type="file" id="file-input" accept=".csv,.xlsx,.xls,.parquet"
+    style="display:none" onchange="uploadFile(this)">
+{% endblock %}
+
+{% block content %}
+
+<!-- Upload Modal -->
+<div id="upload-modal" style="display:none; position:fixed; inset:0; z-index:999;
+     background:rgba(0,0,0,0.55); backdrop-filter:blur(8px);
+     align-items:center; justify-content:center;">
+    <div style="background:var(--bg-card); border:1px solid var(--border);
+         border-radius:var(--radius-lg); padding:28px; width:480px; max-width:90vw;
+         box-shadow:var(--shadow-lg); animation:scaleIn 0.22s ease;">
+        <div class="flex-between mb-20">
+            <div>
+                <div style="font-size:17px; font-weight:700; color:var(--text);">Upload Dataset</div>
+                <div style="font-size:12.5px; color:var(--text-3); margin-top:2px;">CSV, Excel, or Parquet — max 100MB</div>
+            </div>
+            <button onclick="closeUploadModal()" style="background:none;border:none;color:var(--text-3);
+                cursor:pointer;font-size:20px;line-height:1;padding:4px;border-radius:6px;">✕</button>
+        </div>
+        <div class="upload-zone" id="upload-zone"
+             ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)"
+             ondrop="handleDrop(event)" onclick="document.getElementById('file-input').click()">
+            <div class="upload-zone-icon"><i class="ti ti-cloud-upload" aria-hidden="true"></i></div>
+            <div class="upload-zone-title">Drop your file here</div>
+            <div class="upload-zone-sub">or click to browse — max 100MB</div>
+            <div class="upload-formats mt-8">
+                <span class="ext-badge ext-csv">CSV</span>
+                <span class="ext-badge ext-xlsx">XLSX</span>
+                <span class="ext-badge ext-parquet">Parquet</span>
+            </div>
+        </div>
+        <div id="upload-progress" style="display:none;" class="mt-12">
+            <div class="flex-center gap-8 mb-8">
+                <div class="spinner"></div>
+                <span class="text-muted" style="font-size:13px;" id="upload-progress-text">Uploading...</span>
+            </div>
+            <div class="quality-bar">
+                <div class="quality-bar-fill high" id="upload-bar" style="width:0%;transition:width 0.4s;"></div>
+            </div>
+        </div>
+        <div id="upload-result" style="display:none;" class="mt-12"></div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     COMMAND HEADER
+═══════════════════════════════════════════════════ -->
+<div class="cmd-header anim-slide">
+    <div class="cmd-header-inner">
+        <div class="cmd-header-left">
+            <div class="cmd-greeting" id="greeting-text">Good morning</div>
+            <div class="cmd-headline">What should you investigate today?</div>
+            <div class="cmd-sub" id="decision-meta">Loading workspace intelligence...</div>
+        </div>
+        <div class="cmd-header-right">
+            <!-- Health Score Ring -->
+            <div class="health-score-wrap" id="health-score-wrap" title="Data Health Score">
+                <svg class="health-ring" viewBox="0 0 60 60">
+                    <circle class="health-ring-bg" cx="30" cy="30" r="24" />
+                    <circle class="health-ring-fill" id="health-ring-fill" cx="30" cy="30" r="24"
+                            stroke-dasharray="150.796" stroke-dashoffset="150.796" />
+                </svg>
+                <div class="health-score-inner">
+                    <span class="health-score-val" id="health-score-val">—</span>
+                    <span class="health-score-lbl">Health</span>
+                </div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+                <div class="cmd-status-row">
+                    <div class="cmd-pulse-dot"></div>
+                    <span id="system-status-text">System ready</span>
+                </div>
+                <div class="cmd-clock" id="cmd-clock">—</div>
+            </div>
+        </div>
+    </div>
+    <!-- Executive Priority Banner -->
+    <div id="exec-banner" style="display:none;" class="exec-banner">
+        <div class="exec-banner-inner">
+            <div class="exec-banner-icon" id="exec-banner-icon"></div>
+            <div style="flex:1;min-width:0;">
+                <div class="exec-banner-title" id="exec-banner-title"></div>
+                <div class="exec-banner-sub" id="exec-banner-sub"></div>
+            </div>
+            <a id="exec-banner-cta" href="#" class="exec-banner-btn"></a>
+        </div>
+    </div>
+    <div class="cmd-header-accent"></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     5-STAT KPI BAR
+═══════════════════════════════════════════════════ -->
+<div class="kpi-bar anim-slide">
+    <div class="kpi-bar-item">
+        <div class="kpi-bar-icon" style="background:rgba(56,189,248,0.12);color:var(--cyan);">
+            <i class="ti ti-database" aria-hidden="true"></i>
+        </div>
+        <div>
+            <div class="kpi-bar-val" id="kpi-datasets">—</div>
+            <div class="kpi-bar-lbl">Datasets</div>
+        </div>
+    </div>
+    <div class="kpi-bar-divider"></div>
+    <div class="kpi-bar-item">
+        <div class="kpi-bar-icon" style="background:rgba(99,102,241,0.12);color:var(--indigo);">
+            <i class="ti ti-search" aria-hidden="true"></i>
+        </div>
+        <div>
+            <div class="kpi-bar-val" id="kpi-investigations">—</div>
+            <div class="kpi-bar-lbl">Investigations</div>
+        </div>
+    </div>
+    <div class="kpi-bar-divider"></div>
+    <div class="kpi-bar-item">
+        <div class="kpi-bar-icon" style="background:rgba(34,197,94,0.12);color:var(--green);">
+            <i class="ti ti-circle-check" aria-hidden="true"></i>
+        </div>
+        <div>
+            <div class="kpi-bar-val" id="kpi-completed">—</div>
+            <div class="kpi-bar-lbl">Completed</div>
+        </div>
+    </div>
+    <div class="kpi-bar-divider"></div>
+    <div class="kpi-bar-item">
+        <div class="kpi-bar-icon" style="background:rgba(245,158,11,0.12);color:var(--amber);">
+            <i class="ti ti-heart-rate-monitor" aria-hidden="true"></i>
+        </div>
+        <div>
+            <div class="kpi-bar-val" id="kpi-health" style="color:var(--text-3);">—</div>
+            <div class="kpi-bar-lbl">Data Health</div>
+        </div>
+    </div>
+    <div class="kpi-bar-divider"></div>
+    <div class="kpi-bar-item">
+        <div class="kpi-bar-icon" style="background:rgba(239,68,68,0.12);color:var(--red);">
+            <i class="ti ti-alert-triangle" aria-hidden="true"></i>
+        </div>
+        <div>
+            <div class="kpi-bar-val" id="kpi-failed">—</div>
+            <div class="kpi-bar-lbl">Failed</div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     MAIN CONTENT GRID
+═══════════════════════════════════════════════════ -->
+<div class="dash-grid">
+
+    <!-- LEFT COLUMN -->
+    <div class="dash-col-main">
+
+        <!-- Quick Investigation Templates -->
+        <div class="dash-section anim-slide">
+            <div class="dash-section-header">
+                <div>
+                    <div class="dash-section-title">Quick Investigation Templates</div>
+                    <div class="dash-section-sub">One-click enterprise investigation presets</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <select id="template-file-select" class="form-input"
+                            style="width:200px;font-size:12px;" onchange="onTemplateFileChange()">
+                        <option value="">Select dataset first...</option>
+                    </select>
+                </div>
+            </div>
+            <div class="template-grid" id="template-grid"></div>
+        </div>
+
+        <!-- Recent Investigations (max 5) -->
+        <div class="dash-section anim-slide delay-1">
+            <div class="dash-section-header">
+                <div>
+                    <div class="dash-section-title">Recent Investigations</div>
+                    <div class="dash-section-sub">Your last 5 analysis sessions</div>
+                </div>
+                <a href="/insights" class="btn btn-ghost btn-sm" style="font-size:12px;">
+                    View all <i class="ti ti-arrow-right" aria-hidden="true"></i>
+                </a>
+            </div>
+            <div id="recent-investigations">
+                <div class="intel-loading"><div class="spinner"></div><span>Loading...</span></div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div class="dash-col-side">
+
+        <!-- Intelligence Snapshot -->
+        <div class="dash-section anim-slide delay-1">
+            <div class="dash-section-header">
+                <div class="dash-section-title">Intelligence Snapshot</div>
+                <span class="badge badge-green" style="font-size:10px;">
+                    <span class="live-dot"></span> Live
+                </span>
+            </div>
+            <div id="intel-snapshot">
+                <div class="intel-loading"><div class="spinner"></div><span>Reading signals...</span></div>
+            </div>
+        </div>
+
+        <!-- Data Workspace -->
+        <div class="dash-section anim-slide delay-2">
+            <div class="dash-section-header">
+                <div class="dash-section-title">Data Workspace</div>
+                <button class="btn btn-ghost btn-sm" onclick="openUploadModal()" style="font-size:12px;">
+                    <i class="ti ti-plus" aria-hidden="true"></i> Add
+                </button>
+            </div>
+            <div id="workspace-panel">
+                <div class="intel-loading"><div class="spinner"></div><span>Scanning...</span></div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="dash-section anim-slide delay-3">
+            <div class="dash-section-title" style="margin-bottom:12px;">Quick Actions</div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+                <a href="/chat" class="btn btn-primary btn-sm" style="justify-content:center;">
+                    <i class="ti ti-player-play" aria-hidden="true"></i> New Investigation
+                </a>
+                <a href="/nlp" class="btn btn-secondary btn-sm" style="justify-content:center;">
+                    <i class="ti ti-sparkles" aria-hidden="true"></i> NLP Analysis
+                </a>
+                <a href="/explorer" class="btn btn-secondary btn-sm" style="justify-content:center;">
+                    <i class="ti ti-table" aria-hidden="true"></i> Explore Data
+                </a>
+                <a href="/reports" class="btn btn-ghost btn-sm" style="justify-content:center;">
+                    <i class="ti ti-file-description" aria-hidden="true"></i> View Reports
+                </a>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     DASHBOARD STYLES
+═══════════════════════════════════════════════════ -->
+<style>
+/* ── Command header ── */
+.cmd-header {
+    position: relative;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    margin-bottom: 20px;
+}
+
+.cmd-header-inner {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 28px 32px;
+    position: relative;
+    z-index: 1;
+}
+
+.cmd-header-accent {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--cyan), var(--indigo), var(--purple, #8B5CF6), transparent);
+}
+
+.cmd-header::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(ellipse 60% 80% at 0% 0%, rgba(56,189,248,0.06) 0%, transparent 60%),
+        radial-gradient(ellipse 40% 60% at 100% 100%, rgba(99,102,241,0.05) 0%, transparent 60%);
+    pointer-events: none;
+}
+
+.cmd-greeting {
+    font-size: 11.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--cyan);
+    margin-bottom: 8px;
+}
+
+.cmd-headline {
+    font-size: 26px;
+    font-weight: 800;
+    color: var(--text);
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+    margin-bottom: 10px;
+}
+
+.cmd-sub {
+    font-size: 13.5px;
+    color: var(--text-3);
+    line-height: 1.5;
+}
+
+.cmd-header-right {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-shrink: 0;
+    margin-left: 24px;
+}
+
+.cmd-status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 14px;
+    background: rgba(34,197,94,0.08);
+    border: 1px solid rgba(34,197,94,0.2);
+    border-radius: 50px;
+    font-size: 12.5px;
+    color: var(--green-text);
+    font-weight: 600;
+}
+
+.cmd-pulse-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 0 0 rgba(34,197,94,0.5);
+    animation: cmdPulse 2s ease-in-out infinite;
+}
+
+@keyframes cmdPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.5); }
+    50%       { box-shadow: 0 0 0 6px rgba(34,197,94,0); }
+}
+
+.cmd-clock {
+    font-size: 12px;
+    color: var(--text-3);
+    font-variant-numeric: tabular-nums;
+    font-family: 'Courier New', monospace;
+}
+
+/* ── Health Score Ring ── */
+.health-score-wrap {
+    position: relative;
+    width: 64px;
+    height: 64px;
+    flex-shrink: 0;
+    cursor: default;
+}
+
+.health-ring {
+    width: 64px;
+    height: 64px;
+    transform: rotate(-90deg);
+}
+
+.health-ring-bg {
+    fill: none;
+    stroke: var(--border);
+    stroke-width: 4;
+}
+
+.health-ring-fill {
+    fill: none;
+    stroke: var(--green);
+    stroke-width: 4;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 1.2s cubic-bezier(0.4, 0, 0.2, 1),
+                stroke 0.4s ease;
+}
+
+.health-score-inner {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+}
+
+.health-score-val {
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--text);
+    line-height: 1;
+    letter-spacing: -0.03em;
+}
+
+.health-score-lbl {
+    font-size: 8.5px;
+    color: var(--text-3);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-top: 2px;
+}
+
+/* ── Executive Banner ── */
+.exec-banner {
+    border-top: 1px solid var(--border);
+    padding: 0;
+    position: relative;
+    z-index: 1;
+}
+
+.exec-banner-inner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 11px 32px;
+}
+
+.exec-banner-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    flex-shrink: 0;
+}
+
+.exec-banner-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1.3;
+}
+
+.exec-banner-sub {
+    font-size: 11.5px;
+    color: var(--text-3);
+    margin-top: 1px;
+    line-height: 1.4;
+}
+
+.exec-banner-btn {
+    flex-shrink: 0;
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 5px 12px;
+    border-radius: 20px;
+    text-decoration: none;
+    transition: all 0.15s;
+    border: 1px solid;
+    white-space: nowrap;
+}
+
+/* Banner state: critical */
+.exec-banner.critical {
+    background: var(--red-light);
+    border-top-color: var(--red-mid);
+}
+.exec-banner.critical .exec-banner-icon { background: var(--red-mid); color: var(--red-text); }
+.exec-banner.critical .exec-banner-title { color: var(--red-text); }
+.exec-banner.critical .exec-banner-btn {
+    background: var(--red-mid); border-color: var(--red); color: var(--red-text);
+}
+.exec-banner.critical .exec-banner-btn:hover { background: var(--red); color: white; }
+
+/* Banner state: warning */
+.exec-banner.warning {
+    background: var(--amber-light);
+    border-top-color: var(--amber-mid);
+}
+.exec-banner.warning .exec-banner-icon { background: var(--amber-mid); color: var(--amber-text); }
+.exec-banner.warning .exec-banner-title { color: var(--amber-text); }
+.exec-banner.warning .exec-banner-btn {
+    background: var(--amber-mid); border-color: var(--amber); color: var(--amber-text);
+}
+.exec-banner.warning .exec-banner-btn:hover { background: var(--amber); color: white; }
+
+/* Banner state: healthy */
+.exec-banner.healthy {
+    background: var(--green-light);
+    border-top-color: var(--green-mid);
+}
+.exec-banner.healthy .exec-banner-icon { background: var(--green-mid); color: var(--green-text); }
+.exec-banner.healthy .exec-banner-title { color: var(--green-text); }
+.exec-banner.healthy .exec-banner-btn {
+    background: var(--green-mid); border-color: var(--green); color: var(--green-text);
+}
+.exec-banner.healthy .exec-banner-btn:hover { background: var(--green); color: white; }
+
+/* ── KPI bar ── */
+.kpi-bar {
+    display: flex;
+    align-items: center;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 18px 28px;
+    margin-bottom: 20px;
+    gap: 0;
+}
+
+.kpi-bar-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    padding: 0 12px;
+}
+
+.kpi-bar-item:first-child { padding-left: 0; }
+.kpi-bar-item:last-child  { padding-right: 0; }
+
+.kpi-bar-icon {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.kpi-bar-val {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--text);
+    letter-spacing: -0.02em;
+    line-height: 1;
+}
+
+.kpi-bar-lbl {
+    font-size: 11.5px;
+    color: var(--text-3);
+    margin-top: 2px;
+    white-space: nowrap;
+}
+
+.kpi-bar-divider {
+    width: 1px;
+    height: 36px;
+    background: var(--border);
+    flex-shrink: 0;
+}
+
+/* ── Main grid ── */
+.dash-grid {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 20px;
+    align-items: start;
+}
+
+.dash-col-main { display: flex; flex-direction: column; gap: 20px; }
+.dash-col-side  { display: flex; flex-direction: column; gap: 16px; position: sticky; top: 80px; }
+
+/* ── Section containers ── */
+.dash-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 20px 22px;
+}
+
+.dash-section-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.dash-section-title {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -0.01em;
+}
+
+.dash-section-sub {
+    font-size: 11.5px;
+    color: var(--text-3);
+    margin-top: 2px;
+}
+
+/* ── Template grid ── */
+.template-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+}
+
+.template-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 14px;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: left;
+    font-family: inherit;
+    position: relative;
+    overflow: hidden;
+}
+
+.template-card::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 2px;
+    border-radius: 2px 0 0 2px;
+    transition: opacity 0.2s;
+    opacity: 0;
+}
+
+.template-card:hover { border-color: var(--border-hover); background: var(--bg-hover); transform: translateY(-1px); box-shadow: var(--shadow); }
+.template-card:hover::before { opacity: 1; }
+
+.template-card-icon {
+    width: 34px; height: 34px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0; border: 1px solid;
+}
+
+.template-card-title { font-size: 12.5px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
+.template-card-desc  { font-size: 11px; color: var(--text-3); line-height: 1.4; }
+
+/* ── Recent investigation row ── */
+.recent-inv-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 13px 0;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: all 0.15s;
+    text-decoration: none;
+}
+
+.recent-inv-row:last-child { border-bottom: none; }
+
+.recent-inv-row:hover {
+    margin: 0 -22px;
+    padding: 13px 22px;
+    background: var(--bg-hover);
+    border-radius: 8px;
+    border-bottom-color: transparent;
+}
+
+.recent-inv-icon {
+    width: 34px; height: 34px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; flex-shrink: 0;
+}
+
+.recent-inv-body { flex: 1; min-width: 0; }
+
+.recent-inv-question {
+    font-size: 13px; font-weight: 600; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    margin-bottom: 3px;
+}
+
+.recent-inv-meta { display: flex; align-items: center; gap: 7px; }
+
+.recent-inv-right {
+    display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0;
+}
+
+/* ── Signal row (intelligence snapshot) ── */
+.signal-row {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 12.5px; color: var(--text-2); line-height: 1.5;
+}
+
+.signal-row:last-child { border-bottom: none; }
+
+.signal-dot {
+    width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; margin-top: 5px;
+}
+
+/* ── Workspace stat row ── */
+.ws-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.ws-row:last-child { border-bottom: none; }
+
+.ws-row-icon {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; flex-shrink: 0;
+}
+
+.ws-row-label { flex: 1; font-size: 12.5px; color: var(--text-2); font-weight: 500; }
+
+.ws-row-val {
+    font-size: 13px; font-weight: 700; color: var(--text);
+}
+
+.live-dot {
+    display: inline-block;
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--green);
+    margin-right: 3px;
+    animation: cmdPulse 2s infinite;
+}
+
+@keyframes scaleIn {
+    from { transform: scale(0.94); opacity: 0; }
+    to   { transform: scale(1);    opacity: 1; }
+}
+
+@media (max-width: 1100px) {
+    .dash-grid { grid-template-columns: 1fr; }
+    .dash-col-side { position: static; }
+    .template-grid { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 640px) {
+    .kpi-bar { flex-wrap: wrap; gap: 16px; }
+    .kpi-bar-divider { display: none; }
+    .template-grid { grid-template-columns: 1fr; }
+    .cmd-header-right { gap: 12px; }
+}
+</style>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+requireAuth();
+window.onload = () => { setGreeting(); startClock(); renderTemplates(); loadAll(); };
+
+/* ── Clock ── */
+function startClock() {
+    function tick() {
+        const now = new Date();
+        document.getElementById('cmd-clock').textContent = now.toLocaleTimeString('en-US', {
+            hour: '2-digit', minute: '2-digit', second: '2-digit'
+        });
+    }
+    tick();
+    setInterval(tick, 1000);
+}
+
+/* ── Greeting ── */
+function setGreeting() {
+    const h    = new Date().getHours();
+    const gr   = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    document.getElementById('greeting-text').textContent =
+        user.name ? `${gr}, ${user.name.split(' ')[0]}` : gr;
+}
+
+/* ── Load all ── */
+let allFiles = [], allInvs = [], allOverviews = [];
+
+async function loadAll() {
+    await Promise.all([loadFiles(), loadInvestigations()]);
+}
+
+/* ── Files ── */
+async function loadFiles() {
+    const res = await apiFetch('/files/list');
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    allFiles = data.files || [];
+
+    document.getElementById('kpi-datasets').textContent = allFiles.length;
+
+    populateTemplateSelector();
+
+    // Fetch overviews for health score computation
+    if (allFiles.length > 0) {
+        await loadOverviews();
+    } else {
+        setHealthScore(null);
+        renderWorkspacePanel(null);
+    }
+}
+
+/* ── Fetch overview data for all files (up to 5 for perf) ── */
+async function loadOverviews() {
+    const sample = allFiles.slice(0, 5);
+    const results = await Promise.allSettled(
+        sample.map(f =>
+            apiFetch(`/insights/overview/${encodeURIComponent(f.filename)}`)
+                .then(r => r && r.ok ? r.json() : null)
+                .catch(() => null)
+        )
+    );
+    allOverviews = results
+        .map(r => r.status === 'fulfilled' ? r.value : null)
+        .filter(Boolean);
+
+    // ← ADD THIS: if all overview calls failed, still show the ring
+    if (!allOverviews.length) {
+        setHealthScore(null);
+        renderWorkspacePanel(null, []);
+        return;
+    }
+
+    const score = computeHealthScore(allOverviews, allFiles);
+    setHealthScore(score);
+    renderWorkspacePanel(score, allOverviews);
+    renderIntelSnapshot(allInvs);
+}
+/* ── Health Score Computation ──────────────────────────────
+   Weighted formula using real /overview data:
+     • Completeness avg    50%  (100 - avg missing_pct across datasets)
+     • Duplicate penalty   25%  (penalise if any dataset has dupes)
+     • Column health       25%  (avg fraction of cols with <10% missing)
+─────────────────────────────────────────────────────────── */
+function computeHealthScore(overviews, files) {
+    if (!overviews.length) return null;
+
+    // 1. Completeness (avg across datasets)
+    const completenessAvg = overviews.reduce((s, o) => s + (o.completeness || 0), 0) / overviews.length;
+
+    // 2. Duplicate penalty — any dataset with dupes loses points proportionally
+    const dupePenalty = overviews.reduce((sum, o) => {
+        const dupePct = o.rows > 0 ? Math.min(100, (o.duplicate_rows / o.rows) * 100) : 0;
+        return sum + dupePct;
+    }, 0) / overviews.length;
+    const dupeScore = Math.max(0, 100 - dupePenalty * 3); // amplify dupe impact
+
+    // 3. Column health — fraction of columns with <10% missing per dataset
+    const colHealth = overviews.reduce((sum, o) => {
+        if (!o.columns_meta || !o.columns_meta.length) return sum + 100;
+        const healthy = o.columns_meta.filter(c => c.missing_pct < 10).length;
+        return sum + (healthy / o.columns_meta.length) * 100;
+    }, 0) / overviews.length;
+
+    const score = Math.round(completenessAvg * 0.50 + dupeScore * 0.25 + colHealth * 0.25);
+    return Math.max(0, Math.min(100, score));
+}
+
+/* ── Render Health Score Ring ── */
+function setHealthScore(score) {
+    const val   = document.getElementById('health-score-val');
+    const kpi   = document.getElementById('kpi-health');
+    const fill  = document.getElementById('health-ring-fill');
+    const circ  = 150.796; // 2 * π * 24
+
+    if (score === null) {
+        val.textContent = '—';
+        kpi.textContent = '—';
+        return;
+    }
+
+    const offset = circ * (1 - score / 100);
+    fill.style.strokeDashoffset = offset;
+
+    let color;
+    if (score >= 80)      { color = 'var(--green)'; }
+    else if (score >= 60) { color = 'var(--amber)'; }
+    else                  { color = 'var(--red)'; }
+
+    fill.style.stroke = color;
+    val.textContent   = score + '%';
+    val.style.color   = color;
+    kpi.textContent   = score + '%';
+    kpi.style.color   = color;
+
+    // Render executive banner
+    renderExecBanner(score);
+}
+
+/* ── Executive Priority Banner ── */
+function renderExecBanner(score) {
+    const banner   = document.getElementById('exec-banner');
+    const icon     = document.getElementById('exec-banner-icon');
+    const title    = document.getElementById('exec-banner-title');
+    const sub      = document.getElementById('exec-banner-sub');
+    const cta      = document.getElementById('exec-banner-cta');
+
+    banner.style.display = 'block';
+
+    // Find the worst issue across overviews
+    let worstIssue = null;
+    let worstDataset = null;
+    let worstMissing = 0;
+    let totalDupes = 0;
+
+    allOverviews.forEach(o => {
+        if (o.missing_total > worstMissing) {
+            worstMissing = o.missing_total;
+            worstDataset = o.filename;
+        }
+        totalDupes += (o.duplicate_rows || 0);
+
+        if (o.completeness < 70) {
+            if (!worstIssue || o.completeness < worstIssue.completeness) {
+                worstIssue = o;
+            }
+        }
+    });
+
+    if (score < 60) {
+        // Critical
+        banner.className = 'exec-banner critical';
+        icon.innerHTML   = '<i class="ti ti-alert-triangle" aria-hidden="true"></i>';
+        if (worstIssue) {
+            title.textContent = `Data quality critical in "${worstIssue.filename}" — ${(100 - worstIssue.completeness).toFixed(1)}% missing values detected`;
+            sub.textContent   = 'Investigations on this dataset may produce unreliable results. Clean data before running analysis.';
+        } else {
+            title.textContent = `Data health at ${score}% — immediate attention required across ${allOverviews.length} dataset(s)`;
+            sub.textContent   = `${totalDupes} duplicate rows found. Address data quality before running investigations.`;
+        }
+        cta.textContent  = 'View Datasets →';
+        cta.href         = '/datasets';
+
+    } else if (score < 80) {
+        // Warning
+        banner.className = 'exec-banner warning';
+        icon.innerHTML   = '<i class="ti ti-info-circle" aria-hidden="true"></i>';
+        if (totalDupes > 0) {
+            title.textContent = `${totalDupes} duplicate rows across your datasets may skew analysis results`;
+            sub.textContent   = 'Deduplicate before running trend or aggregate investigations for accurate outcomes.';
+        } else if (worstDataset) {
+            title.textContent = `"${worstDataset}" has the most missing values — review before investigating`;
+            sub.textContent   = 'Some columns may need imputation or exclusion to ensure reliable AI analysis.';
+        } else {
+            title.textContent = `Data health at ${score}% — minor quality issues detected`;
+            sub.textContent   = 'Review dataset completeness in the Insights hub before running critical investigations.';
+        }
+        cta.textContent  = 'Open Insights →';
+        cta.href         = '/insights';
+
+    } else {
+        // Healthy
+        banner.className = 'exec-banner healthy';
+        icon.innerHTML   = '<i class="ti ti-circle-check" aria-hidden="true"></i>';
+        title.textContent = `Workspace healthy at ${score}% — all datasets ready for analysis`;
+        sub.textContent   = `${allOverviews.length} dataset(s) validated · ${allInvs.filter(i => i.status === 'completed').length} investigations completed`;
+        cta.textContent  = 'Start Investigation →';
+        cta.href         = '/chat';
+    }
+}
+
+/* ── Investigations ── */
+async function loadInvestigations() {
+    const res = await apiFetch('/investigations/list');
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    allInvs = data.investigations || [];
+
+    const completed = allInvs.filter(i => i.status === 'completed').length;
+    const failed    = allInvs.filter(i => i.status === 'failed').length;
+    const running   = allInvs.filter(i => i.status === 'running').length;
+
+    document.getElementById('kpi-investigations').textContent = allInvs.length;
+    document.getElementById('kpi-completed').textContent      = completed;
+    document.getElementById('kpi-failed').textContent         = failed;
+
+    document.getElementById('decision-meta').textContent =
+        allInvs.length === 0
+            ? 'No investigations yet — select a dataset and run your first analysis'
+            : `${completed} completed · ${running} running · ${failed} failed · ${allInvs.length} total`;
+
+    renderRecentInvestigations();
+    renderIntelSnapshot(allInvs);
+}
+
+/* ── Template selector ── */
+function populateTemplateSelector() {
+    const sel = document.getElementById('template-file-select');
+    if (!allFiles.length) return;
+    sel.innerHTML = '<option value="">Select dataset first...</option>' +
+        allFiles.map(f => `<option value="${f.filename}">${f.filename}</option>`).join('');
+    const active = localStorage.getItem('active_file');
+    if (active) sel.value = active;
+}
+
+function onTemplateFileChange() {
+    const val = document.getElementById('template-file-select').value;
+    if (val) localStorage.setItem('active_file', val);
+}
+
+/* ── Workspace Panel ── */
+function renderWorkspacePanel(score, overviews) {
+    const wrap     = document.getElementById('workspace-panel');
+    const totalKb  = allFiles.reduce((s, f) => s + f.size_kb, 0);
+    const scoreVal = score !== null ? score + '%' : '—';
+
+    // Worst column missing rate across overviews
+    let worstColMissing = 0;
+    (overviews || []).forEach(o => {
+        (o.columns_meta || []).forEach(c => {
+            if (c.missing_pct > worstColMissing) worstColMissing = c.missing_pct;
+        });
+    });
+
+    const scoreColor = score === null ? 'var(--text-3)'
+                     : score >= 80   ? 'var(--green-text)'
+                     : score >= 60   ? 'var(--amber-text)'
+                     : 'var(--red-text)';
+
+    wrap.innerHTML = `
+        <div class="ws-row">
+            <div class="ws-row-icon" style="background:rgba(56,189,248,0.1);color:var(--cyan);">
+                <i class="ti ti-files" aria-hidden="true"></i>
+            </div>
+            <span class="ws-row-label">Active datasets</span>
+            <span class="ws-row-val" style="color:var(--cyan);">${allFiles.length}</span>
+        </div>
+        <div class="ws-row">
+            <div class="ws-row-icon" style="background:rgba(99,102,241,0.1);color:var(--indigo);">
+                <i class="ti ti-database" aria-hidden="true"></i>
+            </div>
+            <span class="ws-row-label">Total size</span>
+            <span class="ws-row-val" style="color:var(--indigo);">${fmtSize(totalKb)}</span>
+        </div>
+        <div class="ws-row">
+            <div class="ws-row-icon" style="background:var(--green-light);color:var(--green-text);">
+                <i class="ti ti-shield-check" aria-hidden="true"></i>
+            </div>
+            <span class="ws-row-label">Health score</span>
+            <span class="ws-row-val" style="color:${scoreColor};">${scoreVal}</span>
+        </div>
+        ${worstColMissing > 0 ? `
+        <div class="ws-row">
+            <div class="ws-row-icon" style="background:var(--amber-light);color:var(--amber-text);">
+                <i class="ti ti-table-off" aria-hidden="true"></i>
+            </div>
+            <span class="ws-row-label">Worst col missing</span>
+            <span class="ws-row-val" style="color:${worstColMissing > 20 ? 'var(--red-text)' : 'var(--amber-text)'};">
+                ${worstColMissing.toFixed(1)}%
+            </span>
+        </div>` : ''}
+        <div style="margin-top:12px;">
+            <button class="btn btn-primary btn-sm w-full" style="justify-content:center;" onclick="openUploadModal()">
+                <i class="ti ti-upload" aria-hidden="true"></i> Upload New Dataset
+            </button>
+        </div>`;
+}
+
+/* ── Recent Investigations ── */
+function renderRecentInvestigations() {
+    const wrap = document.getElementById('recent-investigations');
+    const top5 = [...allInvs]
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+        .slice(0, 5);
+
+    if (!top5.length) {
+        wrap.innerHTML = `
+            <div style="text-align:center;padding:40px 0;">
+                <i class="ti ti-search-off" style="font-size:36px;color:var(--border);display:block;margin-bottom:12px;" aria-hidden="true"></i>
+                <div style="font-size:13.5px;font-weight:600;color:var(--text-2);margin-bottom:6px;">No investigations yet</div>
+                <div class="text-dim" style="font-size:12.5px;margin-bottom:16px;">Select a dataset above and ask your first question</div>
+                <a href="/chat" class="btn btn-primary btn-sm"><i class="ti ti-plus" aria-hidden="true"></i> Start now</a>
+            </div>`;
+        return;
+    }
+
+    const statusMap = {
+        completed: { icon:'ti-circle-check', bg:'var(--green-light)',  color:'var(--green-text)',  badge:'badge-green' },
+        running:   { icon:'ti-loader',       bg:'var(--amber-light)',  color:'var(--amber-text)',  badge:'badge-amber' },
+        failed:    { icon:'ti-circle-x',     bg:'var(--red-light)',    color:'var(--red-text)',    badge:'badge-red'   },
+        pending:   { icon:'ti-clock',        bg:'var(--bg-hover)',     color:'var(--text-3)',      badge:'badge-gray'  },
+    };
+
+    wrap.innerHTML = top5.map(inv => {
+        const s  = statusMap[inv.status] || statusMap.pending;
+        const dt = inv.created_at ? fmtRelTime(inv.created_at) : '—';
+        return `
+        <a class="recent-inv-row" href="/chat?inv=${inv.id}">
+            <div class="recent-inv-icon" style="background:${s.bg};color:${s.color};">
+                <i class="ti ${s.icon}" aria-hidden="true"></i>
+            </div>
+            <div class="recent-inv-body">
+                <div class="recent-inv-question">${escHtml(inv.question)}</div>
+                <div class="recent-inv-meta">
+                    ${inv.domain ? `<span class="badge badge-blue" style="font-size:10px;">${escHtml(inv.domain)}</span>` : ''}
+                    ${inv.filename ? `<span style="font-size:11.5px;color:var(--text-3);"><i class="ti ti-file-spreadsheet" style="font-size:10px;" aria-hidden="true"></i> ${escHtml(inv.filename)}</span>` : ''}
+                </div>
+            </div>
+            <div class="recent-inv-right">
+                <span class="badge ${s.badge}" style="font-size:10px;">${inv.status}</span>
+                <span style="font-size:11px;color:var(--text-3);">${dt}</span>
+            </div>
+        </a>`;
+    }).join('');
+}
+
+/* ── Intelligence Snapshot ─────────────────────────────────
+   Combines real data quality signals from /overview
+   with investigation-status signals for a complete picture.
+─────────────────────────────────────────────────────────── */
+function renderIntelSnapshot(invs) {
+    const signals = [];
+    const failed  = invs.filter(i => i.status === 'failed');
+    const running = invs.filter(i => i.status === 'running');
+    const done    = invs.filter(i => i.status === 'completed');
+
+    // Investigation signals
+    if (failed.length)
+        signals.push({ color:'var(--red)',    text:`${failed.length} investigation${failed.length > 1 ? 's' : ''} failed — review and re-run`, label:'ALERT' });
+    if (running.length)
+        signals.push({ color:'var(--amber)',  text:`${running.length} investigation${running.length > 1 ? 's' : ''} actively running`, label:'ACTIVE' });
+
+    // Real data quality signals from overview API
+    if (allOverviews.length > 0) {
+        // Missing data across all datasets
+        const highMissingDatasets = allOverviews.filter(o => (100 - o.completeness) > 15);
+        if (highMissingDatasets.length) {
+            const names = highMissingDatasets.map(o => `"${o.filename}"`).join(', ');
+            signals.push({
+                color: 'var(--red)',
+                text:  `${highMissingDatasets.length} dataset${highMissingDatasets.length > 1 ? 's' : ''} with >15% missing values: ${names}`,
+                label: 'QUALITY'
+            });
+        }
+
+        // Duplicate rows
+        const totalDupes = allOverviews.reduce((s, o) => s + (o.duplicate_rows || 0), 0);
+        if (totalDupes > 0) {
+            signals.push({
+                color: 'var(--amber)',
+                text:  `${totalDupes} duplicate row${totalDupes > 1 ? 's' : ''} detected across datasets — may skew analysis`,
+                label: 'DUPES'
+            });
+        }
+
+        // Columns with heavy missing
+        const badCols = [];
+        allOverviews.forEach(o => {
+            (o.columns_meta || []).forEach(c => {
+                if (c.missing_pct > 30) badCols.push(`${c.name} (${c.missing_pct}%)`);
+            });
+        });
+        if (badCols.length) {
+            signals.push({
+                color: 'var(--amber)',
+                text:  `${badCols.length} column${badCols.length > 1 ? 's' : ''} with >30% missing: ${badCols.slice(0, 2).join(', ')}${badCols.length > 2 ? ` +${badCols.length - 2} more` : ''}`,
+                label: 'COLUMNS'
+            });
+        }
+
+        // Positive: clean workspace
+        if (!highMissingDatasets.length && totalDupes === 0 && !badCols.length) {
+            signals.push({
+                color: 'var(--green)',
+                text:  `All ${allOverviews.length} dataset${allOverviews.length > 1 ? 's' : ''} clean — no critical quality issues found`,
+                label: 'CLEAN'
+            });
+        }
+    }
+
+    // Investigation volume signals
+    if (done.length >= 10)
+        signals.push({ color:'var(--cyan)',   text:`${done.length} completed — strong intelligence base built`, label:'INSIGHT' });
+    else if (done.length > 0)
+        signals.push({ color:'var(--indigo)', text:`${done.length} completed investigation${done.length > 1 ? 's' : ''} — memory growing`, label:'GROWING' });
+
+    if (allFiles.length >= 5)
+        signals.push({ color:'var(--green)',  text:`${allFiles.length} datasets ready — cross-dataset analysis available`, label:'READY' });
+
+    if (!signals.length)
+        signals.push({ color:'var(--green)',  text:'All systems healthy — workspace ready for analysis', label:'OK' });
+
+    document.getElementById('intel-snapshot').innerHTML = signals.map(s => `
+        <div class="signal-row">
+            <div class="signal-dot" style="background:${s.color};box-shadow:0 0 5px ${s.color};"></div>
+            <div style="flex:1;">${s.text}</div>
+            <div style="font-size:10px;font-weight:700;color:${s.color};flex-shrink:0;margin-left:8px;">${s.label}</div>
+        </div>`).join('');
+}
+
+/* ── Templates ── */
+const TEMPLATES = [
+    { icon:'ti-trending-down', title:'Revenue Drop',     desc:'Diagnose declining revenue',   question:'Why is revenue dropping and what are the key contributing factors?',                 color:'red'    },
+    { icon:'ti-users',         title:'Customer Churn',   desc:'Identify churn drivers',       question:'What factors are driving customer churn and which segments are most at risk?',       color:'amber'  },
+    { icon:'ti-truck',         title:'Delivery Delays',  desc:'Root cause of delays',         question:'What is causing delivery delays and where are the operational bottlenecks?',         color:'blue'   },
+    { icon:'ti-file-x',        title:'Claims Rejection', desc:'Analyse rejection patterns',   question:'What patterns explain high claim rejection rates?',                                   color:'purple' },
+    { icon:'ti-alert-triangle',title:'Operational Risk', desc:'Surface hidden risks',         question:'What operational risks are present in the data and what is their potential impact?', color:'red'    },
+    { icon:'ti-chart-line',    title:'Sales Forecast',   desc:'Predict next quarter',         question:'Based on current trends, what will sales look like next quarter?',                   color:'green'  },
+];
+
+const TEMPLATE_COLORS = {
+    red:    { bg:'var(--red-light)',    border:'rgba(239,68,68,0.3)',    color:'var(--red-text)',    accent:'var(--red)' },
+    amber:  { bg:'var(--amber-light)',  border:'rgba(245,158,11,0.3)',   color:'var(--amber-text)',  accent:'var(--amber)' },
+    blue:   { bg:'var(--blue-light)',   border:'rgba(37,99,235,0.3)',    color:'var(--blue)',        accent:'var(--blue)' },
+    purple: { bg:'var(--purple-light)', border:'rgba(139,92,246,0.3)',   color:'var(--purple-text)', accent:'var(--purple,#8B5CF6)' },
+    green:  { bg:'var(--green-light)',  border:'rgba(34,197,94,0.3)',    color:'var(--green-text)',  accent:'var(--green)' },
+};
+
+function renderTemplates() {
+    document.getElementById('template-grid').innerHTML = TEMPLATES.map(t => {
+        const c = TEMPLATE_COLORS[t.color];
+        return `
+        <button class="template-card" onclick="startTemplate('${escAttr(t.question)}')"
+                style="--t-accent:${c.accent};">
+            <style>.template-card:hover::before { background: var(--t-accent, var(--indigo)); }</style>
+            <div class="template-card-icon" style="background:${c.bg};border-color:${c.border};color:${c.color};">
+                <i class="ti ${t.icon}" aria-hidden="true"></i>
+            </div>
+            <div style="flex:1;">
+                <div class="template-card-title">${t.title}</div>
+                <div class="template-card-desc">${t.desc}</div>
+            </div>
+            <i class="ti ti-arrow-right" style="color:var(--text-4);font-size:12px;flex-shrink:0;" aria-hidden="true"></i>
+        </button>`;
+    }).join('');
+}
+
+function startTemplate(question) {
+    const file = document.getElementById('template-file-select').value
+              || localStorage.getItem('active_file');
+    if (!file) { openUploadModal(); return; }
+    localStorage.setItem('prefill_question', question);
+    localStorage.setItem('active_file', file);
+    window.location.href = '/chat';
+}
+
+/* ── Upload modal ── */
+function openUploadModal() {
+    const m = document.getElementById('upload-modal');
+    m.style.display = 'flex';
+    document.getElementById('upload-result').style.display   = 'none';
+    document.getElementById('upload-progress').style.display = 'none';
+}
+
+function closeUploadModal() {
+    document.getElementById('upload-modal').style.display = 'none';
+}
+
+document.getElementById('upload-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeUploadModal();
+});
+
+async function uploadFile(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const pw   = document.getElementById('upload-progress');
+    const pt   = document.getElementById('upload-progress-text');
+    const pb   = document.getElementById('upload-bar');
+    const rd   = document.getElementById('upload-result');
+
+    pw.style.display = 'block';
+    rd.style.display = 'none';
+    pt.textContent   = `Uploading ${file.name}...`;
+
+    let pct = 0;
+    const iv = setInterval(() => { pct = Math.min(pct + 10, 85); pb.style.width = pct + '%'; }, 180);
+
+    const fd = new FormData();
+    fd.append('file', file);
+
+    try {
+        const res  = await fetch('/files/upload', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${getToken()}` },
+            body: fd
+        });
+        const data = await res.json();
+        clearInterval(iv);
+        pb.style.width = '100%';
+        pt.textContent = 'Processing...';
+        await new Promise(r => setTimeout(r, 400));
+        pw.style.display = 'none';
+        pb.style.width   = '0%';
+        rd.style.display = 'block';
+
+        if (!res.ok) {
+            rd.innerHTML = `<div class="alert alert-error"><i class="ti ti-alert-circle alert-icon" aria-hidden="true"></i><span>${data.detail || 'Upload failed'}</span></div>`;
+            return;
+        }
+        rd.innerHTML = `<div class="alert alert-success"><i class="ti ti-circle-check alert-icon" aria-hidden="true"></i><span><strong>${file.name}</strong> uploaded successfully</span></div>`;
+        localStorage.setItem('active_file', data.filename || file.name);
+        await loadFiles();
+        setTimeout(() => closeUploadModal(), 1400);
+    } catch(e) {
+        clearInterval(iv);
+        pw.style.display = 'none';
+        rd.style.display = 'block';
+        rd.innerHTML = `<div class="alert alert-error"><i class="ti ti-alert-circle alert-icon" aria-hidden="true"></i><span>Upload failed. Try again.</span></div>`;
+    }
+    input.value = '';
+}
+
+function handleDragOver(e)  { e.preventDefault(); document.getElementById('upload-zone').classList.add('dragover'); }
+function handleDragLeave()  { document.getElementById('upload-zone').classList.remove('dragover'); }
+function handleDrop(e) {
+    e.preventDefault();
+    document.getElementById('upload-zone').classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    const input = document.getElementById('file-input');
+    const dt = new DataTransfer(); dt.items.add(file); input.files = dt.files;
+    uploadFile(input);
+}
+
+/* ── Helpers ── */
+function fmtSize(kb) { return kb >= 1024 ? (kb/1024).toFixed(1)+' MB' : kb.toFixed(1)+' KB'; }
+function fmtRelTime(d) {
+    const diff = Date.now() - new Date(d).getTime();
+    const m    = Math.floor(diff/60000);
+    if (m < 1)   return 'just now';
+    if (m < 60)  return `${m}m ago`;
+    const h = Math.floor(m/60);
+    if (h < 24)  return `${h}h ago`;
+    return `${Math.floor(h/24)}d ago`;
+}
+function escHtml(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escAttr(s) {
+    return String(s||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+</script>
+{% endblock %}

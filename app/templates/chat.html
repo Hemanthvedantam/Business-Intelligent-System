@@ -1,0 +1,1519 @@
+{% extends "base.html" %}
+{% block title %}Investigate — ABIP{% endblock %}
+{% block breadcrumb %}Investigations{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-ghost btn-sm" onclick="newInvestigation()">
+    <i class="ti ti-plus" aria-hidden="true"></i> New
+</button>
+<button class="btn btn-secondary btn-sm" id="export-pdf-btn" style="display:none" onclick="exportReport('pdf')">
+    <i class="ti ti-file-type-pdf" aria-hidden="true"></i> PDF
+</button>
+<button class="btn btn-secondary btn-sm" id="export-docx-btn" style="display:none" onclick="exportReport('docx')">
+    <i class="ti ti-file-type-doc" aria-hidden="true"></i> DOCX
+</button>
+{% endblock %}
+
+{% block content %}
+
+<div class="inv-shell" id="app-layout">
+
+    <!-- LEFT PANEL -->
+    <aside class="inv-sidebar">
+        <div class="inv-sidebar-section">
+            <div class="inv-sidebar-label">
+                <i class="ti ti-database" aria-hidden="true"></i> Dataset
+                <a href="/dashboard" class="inv-upload-link">
+                    <i class="ti ti-upload" aria-hidden="true"></i> Upload
+                </a>
+            </div>
+            <select id="file-selector" class="form-input" onchange="onFileSelect()">
+                <option value="">Select a dataset…</option>
+            </select>
+            <div id="file-meta" class="inv-file-meta" style="display:none;">
+                <i class="ti ti-file-spreadsheet inv-file-icon" aria-hidden="true"></i>
+                <span id="file-meta-text"></span>
+            </div>
+        </div>
+
+        <div class="inv-sidebar-section inv-domain-card" id="domain-card" style="display:none;">
+            <div class="inv-sidebar-label">
+                <i class="ti ti-brain" aria-hidden="true"></i> Domain Detected
+                <span class="badge badge-green inv-domain-conf" id="domain-conf-badge"></span>
+            </div>
+            <div class="inv-domain-name" id="domain-name">—</div>
+            <div class="inv-domain-entities" id="domain-entities"></div>
+            <div class="inv-domain-objective">
+                <span class="inv-obj-label">Objective</span>
+                <span id="domain-objective">—</span>
+            </div>
+        </div>
+
+        <div class="inv-sidebar-section inv-question-section">
+            <div class="inv-sidebar-label">
+                <i class="ti ti-message-question" aria-hidden="true"></i> Your Question
+                <span class="inv-hotkey">⌘↵</span>
+            </div>
+            <textarea id="question-input" class="form-input inv-textarea"
+                placeholder="e.g. Why are delivery delays increasing in Q3?"
+                rows="3"
+                onkeydown="handleKey(event)"></textarea>
+            <button class="btn btn-primary inv-run-btn" id="investigate-btn" onclick="startInvestigation()">
+                <i class="ti ti-player-play" aria-hidden="true"></i> Run Investigation
+            </button>
+        </div>
+
+        <div class="inv-sidebar-section">
+            <div class="inv-sidebar-label">
+                <i class="ti ti-sparkles" aria-hidden="true"></i> Quick Questions
+            </div>
+            <div class="inv-chips" id="example-chips">
+                <button class="inv-chip" onclick="useQuestion(this)">Why are sales dropping?</button>
+                <button class="inv-chip" onclick="useQuestion(this)">Which region performs worst?</button>
+                <button class="inv-chip" onclick="useQuestion(this)">What will revenue look like next month?</button>
+                <button class="inv-chip" onclick="useQuestion(this)">What causes customer churn?</button>
+                <button class="inv-chip" onclick="useQuestion(this)">Which product has lowest margin?</button>
+                <button class="inv-chip" onclick="useQuestion(this)">How many rows?</button>
+                <button class="inv-chip" onclick="useQuestion(this)">What are the column names?</button>
+            </div>
+        </div>
+    </aside>
+
+    <!-- CENTER PANEL (now full width) -->
+    <main class="inv-center">
+
+        <div id="empty-state" class="inv-empty">
+            <div class="inv-empty-icon">
+                <i class="ti ti-search-off" aria-hidden="true"></i>
+            </div>
+            <div class="inv-empty-title">Ready to investigate</div>
+            <p class="inv-empty-desc">Select a dataset and ask a question — eight specialised AI agents will analyse your data, find root causes, and recommend actions.</p>
+            <div class="inv-empty-features">
+                <div class="inv-empty-feat"><i class="ti ti-git-branch" aria-hidden="true"></i> Root cause analysis</div>
+                <div class="inv-empty-feat"><i class="ti ti-trending-up" aria-hidden="true"></i> Forecast generation</div>
+                <div class="inv-empty-feat"><i class="ti ti-bulb" aria-hidden="true"></i> Actionable recommendations</div>
+                <div class="inv-empty-feat"><i class="ti ti-chart-dots" aria-hidden="true"></i> Visual evidence charts</div>
+            </div>
+        </div>
+
+        <div id="investigation-panel" style="display:none; flex-direction:column; gap:16px;">
+
+            <div class="inv-header-bar">
+                <div class="inv-header-left">
+                    <div class="inv-header-question" id="inv-question-display"></div>
+                    <div class="inv-header-meta">
+                        <span class="badge" id="query-type-badge" style="display:none;"></span>
+                        <span class="badge" id="inv-status-badge">Running</span>
+                    </div>
+                </div>
+                <div class="inv-header-timer" id="dag-elapsed" style="display:none;">
+                    <i class="ti ti-clock" aria-hidden="true"></i>
+                    <span id="dag-timer">0s</span>
+                </div>
+            </div>
+
+            <div class="inv-pipeline-card" id="pipeline-card">
+                <div class="inv-pipeline-header">
+                    <div class="inv-pipeline-title-row">
+                        <div class="inv-pipeline-icon">
+                            <i class="ti ti-cpu" aria-hidden="true"></i>
+                        </div>
+                        <div>
+                            <div class="inv-pipeline-title">Agent Workflow</div>
+                            <div class="inv-pipeline-sub" id="dag-sub-text">Initialising pipeline…</div>
+                        </div>
+                    </div>
+                    <div class="inv-progress-wrap" title="Pipeline progress">
+                        <svg class="inv-ring-svg" viewBox="0 0 44 44">
+                            <circle class="inv-ring-track" cx="22" cy="22" r="18"/>
+                            <circle class="inv-ring-fill" id="dag-ring" cx="22" cy="22" r="18"
+                                    stroke-dasharray="113.1" stroke-dashoffset="113.1"/>
+                        </svg>
+                        <span class="inv-ring-pct" id="dag-ring-label">0%</span>
+                    </div>
+                </div>
+                <div class="inv-dag-canvas" id="dag-canvas"></div>
+                <div class="inv-drawer" id="dag-drawer" style="display:none;">
+                    <div class="inv-drawer-header">
+                        <div class="inv-drawer-header-left">
+                            <span class="inv-drawer-dot" id="dag-drawer-dot"></span>
+                            <span class="inv-drawer-title" id="dag-drawer-title">—</span>
+                        </div>
+                        <button class="inv-drawer-close" onclick="closeDrawer()" aria-label="Close">
+                            <i class="ti ti-x" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                    <div class="inv-drawer-body" id="dag-drawer-body"></div>
+                </div>
+            </div>
+
+            <div class="inv-log-card" id="agents-detail-card" style="display:none;">
+                <div class="inv-log-header">
+                    <div class="inv-log-title">
+                        <i class="ti ti-activity" aria-hidden="true"></i> Live Agent Log
+                    </div>
+                    <button class="btn btn-ghost btn-sm" onclick="toggleAgentDetail()" id="toggle-detail-btn">
+                        <i class="ti ti-chevron-up" aria-hidden="true"></i> Collapse
+                    </button>
+                </div>
+                <div class="inv-log-timeline" id="agent-steps"></div>
+            </div>
+
+            <!-- VIEW FULL REPORT BANNER -->
+            <div id="report-banner" style="display:none;">
+                <div class="report-banner-card">
+                    <div class="report-banner-left">
+                        <div class="report-banner-icon">
+                            <i class="ti ti-checkup-list" aria-hidden="true"></i>
+                        </div>
+                        <div>
+                            <div class="report-banner-title">Analysis complete</div>
+                            <div class="report-banner-sub">All 8 agents finished — view the full structured report below</div>
+                        </div>
+                    </div>
+                    <button class="btn report-banner-btn" onclick="openFullReport()">
+                        <i class="ti ti-layout-list" aria-hidden="true"></i>
+                        View Full Report
+                        <i class="ti ti-arrow-down" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+</div><!-- /.inv-shell -->
+
+<!-- ═══════════════════════════════════════════════════════
+     FULL REPORT SECTION — Full-width, below the 2-col shell
+     Hidden until "View Full Report" is clicked
+═══════════════════════════════════════════════════════ -->
+<div id="full-report-section" style="display:none;">
+
+    <!-- Sticky report topbar -->
+    <div class="fr-topbar">
+        <div class="fr-topbar-left">
+            <div class="fr-topbar-icon">
+                <i class="ti ti-report-analytics" aria-hidden="true"></i>
+            </div>
+            <div>
+                <div class="fr-topbar-title" id="fr-question-label">Investigation Report</div>
+                <div class="fr-topbar-meta" id="fr-meta-label">—</div>
+            </div>
+        </div>
+        <div class="fr-topbar-actions">
+            <button class="btn btn-ghost btn-sm" onclick="closeFullReport()">
+                <i class="ti ti-x" aria-hidden="true"></i> Close Report
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="exportReport('pdf')">
+                <i class="ti ti-file-type-pdf" aria-hidden="true"></i> PDF
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="exportReport('docx')">
+                <i class="ti ti-file-type-doc" aria-hidden="true"></i> DOCX
+            </button>
+        </div>
+    </div>
+
+    <div class="fr-body">
+
+        <!-- KPI strip -->
+        <div class="fr-kpi-strip" id="fr-kpi-strip"></div>
+
+        <!-- Executive Summary — full width -->
+        <div class="fr-card fr-card-full" id="fr-exec-card">
+            <div class="fr-card-header">
+                <div class="fr-card-icon fr-icon-blue">
+                    <i class="ti ti-report-analytics" aria-hidden="true"></i>
+                </div>
+                <div class="fr-card-title">Executive Summary</div>
+                <span class="fr-conf-badge" id="fr-conf-badge">—</span>
+            </div>
+            <div class="fr-card-body" id="fr-exec-body">
+                <div class="fr-subsection-label">Key Evidence</div>
+                <ul class="fr-evidence-list" id="fr-evidence-list"></ul>
+            </div>
+        </div>
+
+        <!-- Main grid: 2 columns -->
+        <div class="fr-grid">
+
+            <!-- LEFT COLUMN -->
+            <div class="fr-col">
+
+                <!-- Root Causes -->
+                <div class="fr-card" id="fr-causes-card" style="display:none;">
+                    <div class="fr-card-header">
+                        <div class="fr-card-icon fr-icon-red">
+                            <i class="ti ti-search" aria-hidden="true"></i>
+                        </div>
+                        <div class="fr-card-title">Root Causes</div>
+                        <span class="fr-count-badge" id="fr-causes-count"></span>
+                    </div>
+                    <div id="fr-causes-list"></div>
+                </div>
+
+                <!-- Evidence Tree -->
+                <div class="fr-card" id="fr-tree-card" style="display:none;">
+                    <div class="fr-card-header">
+                        <div class="fr-card-icon fr-icon-blue">
+                            <i class="ti ti-git-branch" aria-hidden="true"></i>
+                        </div>
+                        <div class="fr-card-title">Evidence Tree</div>
+                        <span class="fr-count-badge" id="fr-tree-count"></span>
+                    </div>
+                    <div class="fr-card-body" id="fr-tree-body"></div>
+                </div>
+
+                <!-- Simple answer (for direct queries) -->
+                <div class="fr-card" id="fr-answer-card" style="display:none;">
+                    <div class="fr-card-header">
+                        <div class="fr-card-icon fr-icon-blue">
+                            <i class="ti ti-message-circle" aria-hidden="true"></i>
+                        </div>
+                        <div class="fr-card-title">Answer</div>
+                    </div>
+                    <div class="fr-card-body" id="fr-answer-body"
+                         style="font-size:14px; line-height:1.8; color:var(--text-2);"></div>
+                </div>
+
+            </div>
+
+            <!-- RIGHT COLUMN -->
+            <div class="fr-col">
+
+                <!-- Recommendations -->
+                <div class="fr-card" id="fr-recs-card" style="display:none;">
+                    <div class="fr-card-header">
+                        <div class="fr-card-icon fr-icon-green">
+                            <i class="ti ti-bulb" aria-hidden="true"></i>
+                        </div>
+                        <div class="fr-card-title">Recommendations</div>
+                        <span class="fr-count-badge" id="fr-recs-count"></span>
+                    </div>
+                    <div id="fr-recs-list"></div>
+                </div>
+
+                <!-- Charts -->
+                <div class="fr-card" id="fr-charts-card" style="display:none;">
+                    <div class="fr-card-header">
+                        <div class="fr-card-icon fr-icon-purple">
+                            <i class="ti ti-chart-bar" aria-hidden="true"></i>
+                        </div>
+                        <div class="fr-card-title">Visual Evidence</div>
+                    </div>
+                    <div class="fr-card-body" id="fr-charts-body"
+                         style="display:flex; flex-direction:column; gap:16px;"></div>
+                </div>
+
+            </div>
+
+        </div><!-- /.fr-grid -->
+
+        <!-- Agent Insights — full width -->
+        <div class="fr-card fr-card-full" id="fr-agents-card">
+            <div class="fr-card-header">
+                <div class="fr-card-icon fr-icon-amber">
+                    <i class="ti ti-cpu" aria-hidden="true"></i>
+                </div>
+                <div class="fr-card-title">Agent Insights</div>
+                <span class="fr-count-badge" id="fr-agents-count"></span>
+            </div>
+            <div class="fr-agents-grid" id="fr-agents-grid"></div>
+        </div>
+
+        <!-- Export row at bottom of report -->
+        <div class="inv-export-row" id="fr-export-row">
+            <span class="inv-export-label">Export Report</span>
+            <div class="inv-export-btns">
+                <button class="btn btn-secondary btn-sm" onclick="exportReport('pdf')">
+                    <i class="ti ti-file-type-pdf" aria-hidden="true"></i> PDF
+                </button>
+                <button class="btn btn-secondary btn-sm" onclick="exportReport('docx')">
+                    <i class="ti ti-file-type-doc" aria-hidden="true"></i> DOCX
+                </button>
+                <button class="btn btn-ghost btn-sm" onclick="shareReport()">
+                    <i class="ti ti-share" aria-hidden="true"></i> Share
+                </button>
+            </div>
+        </div>
+
+    </div><!-- /.fr-body -->
+</div><!-- /#full-report-section -->
+
+
+<style>
+/* ─── LAYOUT: 2-col (sidebar + center, no right panel) ─── */
+.inv-shell {
+    display: grid;
+    grid-template-columns: 272px 1fr;
+    gap: 0;
+    min-height: calc(100vh - var(--header-h) - 48px);
+    align-items: start;
+}
+.inv-sidebar {
+    border-right: 1px solid var(--border);
+    padding: 0 20px 24px 0;
+    position: sticky;
+    top: calc(var(--header-h) + 24px);
+    max-height: calc(100vh - var(--header-h) - 48px);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.inv-sidebar-section {
+    padding: 16px 0;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.inv-sidebar-section:last-child { border-bottom: none; }
+.inv-sidebar-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-3);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+}
+.inv-sidebar-label i { font-size: 13px; }
+.inv-upload-link {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--blue);
+    text-decoration: none;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    transition: background 0.15s;
+}
+.inv-upload-link:hover { background: var(--blue-light); }
+.inv-file-meta {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 12px;
+    color: var(--text-2);
+    font-weight: 500;
+}
+.inv-file-icon { color: var(--blue); font-size: 14px; flex-shrink: 0; }
+.inv-domain-card { background: var(--bg); border-radius: var(--radius); padding: 14px !important; border: 1px solid var(--border); border-bottom: 1px solid var(--border) !important; }
+.inv-domain-name { font-size: 16px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; }
+.inv-domain-conf { font-size: 10.5px; margin-left: auto; }
+.inv-domain-entities { display: flex; flex-wrap: wrap; gap: 5px; }
+.inv-domain-objective { font-size: 12px; color: var(--text-3); padding-top: 10px; border-top: 1px solid var(--border); line-height: 1.5; }
+.inv-obj-label { font-weight: 700; color: var(--text-2); margin-right: 4px; }
+.inv-textarea { resize: none; min-height: 80px; font-size: 13.5px; line-height: 1.6; }
+.inv-run-btn { width: 100%; justify-content: center; padding: 10px; font-size: 13.5px; font-weight: 600; }
+.inv-hotkey {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--text-4);
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-family: monospace;
+}
+.inv-chips { display: flex; flex-direction: column; gap: 5px; }
+.inv-chip {
+    padding: 7px 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 12.5px;
+    font-family: 'Inter', sans-serif;
+    color: var(--text-2);
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: left;
+    font-weight: 500;
+    line-height: 1.4;
+}
+.inv-chip:hover { border-color: var(--blue); color: var(--blue); background: var(--blue-light); }
+.inv-center {
+    padding: 0 20px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+.inv-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 60px 40px;
+    border: 1.5px dashed var(--border);
+    border-radius: var(--radius-xl);
+    background: var(--bg-card);
+    min-height: 480px;
+}
+.inv-empty-icon {
+    width: 56px; height: 56px;
+    border-radius: 16px;
+    background: var(--blue-light);
+    border: 1px solid var(--blue-mid);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px; color: var(--blue);
+    margin-bottom: 20px;
+}
+.inv-empty-title { font-size: 18px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; margin-bottom: 8px; }
+.inv-empty-desc { font-size: 13.5px; color: var(--text-3); line-height: 1.7; max-width: 360px; margin-bottom: 28px; }
+.inv-empty-features { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; max-width: 320px; }
+.inv-empty-feat {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; color: var(--text-2);
+    padding: 9px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-weight: 500;
+}
+.inv-empty-feat i { color: var(--blue); font-size: 15px; flex-shrink: 0; }
+.inv-header-bar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+}
+.inv-header-left { flex: 1; min-width: 0; }
+.inv-header-question { font-size: 15px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 6px; }
+.inv-header-meta { display: flex; align-items: center; gap: 7px; }
+.inv-header-timer {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: var(--text-3);
+    font-family: 'Courier New', monospace;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 4px 10px;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+.inv-pipeline-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-sm); }
+.inv-pipeline-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); background: var(--bg); }
+.inv-pipeline-title-row { display: flex; align-items: center; gap: 10px; }
+.inv-pipeline-icon { width: 32px; height: 32px; background: var(--blue-light); border: 1px solid var(--blue-mid); border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 15px; color: var(--blue); flex-shrink: 0; }
+.inv-pipeline-title { font-size: 13px; font-weight: 700; color: var(--text); }
+.inv-pipeline-sub { font-size: 11.5px; color: var(--text-3); margin-top: 1px; }
+.inv-progress-wrap { position: relative; width: 44px; height: 44px; flex-shrink: 0; }
+.inv-ring-svg { width: 44px; height: 44px; }
+.inv-ring-track { fill: none; stroke: var(--border); stroke-width: 3; }
+.inv-ring-fill { fill: none; stroke: var(--blue); stroke-width: 3; stroke-linecap: round; transform: rotate(-90deg); transform-origin: 22px 22px; transition: stroke-dashoffset 0.6s ease; }
+.inv-ring-pct { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 9.5px; font-weight: 700; color: var(--blue); }
+.inv-dag-canvas { padding: 20px 18px; display: flex; flex-direction: column; gap: 12px; }
+.dag-row { display: grid; gap: 6px; align-items: center; }
+.dag-row-top { grid-template-columns: repeat(5, 1fr); }
+.dag-row-bot { grid-template-columns: 1fr 1fr 1fr 2fr; }
+.dag-node {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    padding: 12px 8px;
+    background: var(--bg);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: all 0.22s;
+    position: relative;
+    min-height: 76px;
+}
+.dag-node:hover { border-color: var(--blue); background: var(--blue-light); }
+.dag-node-badge { width: 34px; height: 34px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; transition: all 0.25s; background: var(--bg-card); border: 1.5px solid var(--border); color: var(--text-3); }
+.dag-node-label { font-size: 11px; font-weight: 600; color: var(--text-3); letter-spacing: 0.01em; text-align: center; }
+.dag-node-status { font-size: 9.5px; font-weight: 600; padding: 2px 6px; border-radius: 20px; background: var(--border); color: var(--text-4); letter-spacing: 0.03em; white-space: nowrap; max-width: 90px; overflow: hidden; text-overflow: ellipsis; transition: all 0.25s; }
+.dag-node-check { position: absolute; top: -5px; right: -5px; width: 16px; height: 16px; background: var(--green); border: 2px solid var(--bg-card); border-radius: 50%; display: none; align-items: center; justify-content: center; font-size: 8px; color: #fff; }
+.dag-node.running { border-color: var(--amber); background: var(--amber-light); }
+.dag-node.running .dag-node-badge { background: var(--amber-light); border-color: var(--amber); color: var(--amber-text); animation: nodeGlow 1.4s ease-in-out infinite; }
+@keyframes nodeGlow { 0%,100% { box-shadow: 0 0 0 0 rgba(245,158,11,0.35); } 50% { box-shadow: 0 0 0 8px rgba(245,158,11,0); } }
+.dag-node.running .dag-node-label { color: var(--amber-text); }
+.dag-node.running .dag-node-status { background: var(--amber-mid); color: var(--amber-text); }
+.dag-node.done { border-color: var(--green); background: var(--green-light); }
+.dag-node.done .dag-node-badge { background: var(--green-light); border-color: var(--green); color: var(--green-text); }
+.dag-node.done .dag-node-label { color: var(--green-text); }
+.dag-node.done .dag-node-status { background: rgba(34,197,94,0.15); color: var(--green-text); }
+.dag-node.done .dag-node-check { display: flex; }
+.dag-node.failed { border-color: var(--red); background: var(--red-light); }
+.dag-node.failed .dag-node-badge { background: var(--red-light); border-color: var(--red); color: var(--red-text); }
+.dag-node.failed .dag-node-label { color: var(--red-text); }
+.dag-node.selected { outline: 2.5px solid var(--blue); outline-offset: 2px; border-color: var(--blue); }
+.dag-row-label { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 600; color: var(--text-3); letter-spacing: 0.06em; text-transform: uppercase; padding: 0 2px; }
+.dag-row-label::before, .dag-row-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.inv-drawer { border-top: 1px solid var(--border); background: var(--bg); animation: drawerIn 0.2s ease; }
+@keyframes drawerIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+.inv-drawer-header { display: flex; align-items: center; justify-content: space-between; padding: 11px 18px; border-bottom: 1px solid var(--border); background: var(--bg); }
+.inv-drawer-header-left { display: flex; align-items: center; gap: 8px; }
+.inv-drawer-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.inv-drawer-title { font-size: 12.5px; font-weight: 700; color: var(--text); }
+.inv-drawer-close { background: none; border: none; cursor: pointer; color: var(--text-3); font-size: 14px; padding: 4px; border-radius: 6px; transition: color 0.15s; display: flex; align-items: center; }
+.inv-drawer-close:hover { color: var(--text); }
+.inv-drawer-body { padding: 14px 18px; font-size: 13px; line-height: 1.7; color: var(--text-2); max-height: 200px; overflow-y: auto; }
+.inv-drawer-item { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.inv-drawer-item:last-child { border-bottom: none; }
+.inv-drawer-bullet { width: 5px; height: 5px; border-radius: 50%; background: var(--blue); flex-shrink: 0; margin-top: 7px; }
+.inv-log-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-sm); }
+.inv-log-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--bg); }
+.inv-log-title { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 700; color: var(--text); }
+.inv-log-timeline { padding: 6px 16px 8px; position: relative; }
+.inv-log-timeline::before { content: ''; position: absolute; left: 33px; top: 16px; bottom: 16px; width: 1px; background: var(--border); }
+.agent-step { display: flex; align-items: flex-start; gap: 12px; padding: 10px 0; position: relative; animation: stepIn 0.2s ease both; }
+@keyframes stepIn { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: translateX(0); } }
+.agent-step-icon { width: 26px; height: 26px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--text-3); flex-shrink: 0; z-index: 1; }
+.agent-step.running .agent-step-icon { background: var(--amber-light); border-color: var(--amber); color: var(--amber-text); }
+.agent-step.done .agent-step-icon { background: var(--green-light); border-color: var(--green); color: var(--green-text); }
+.agent-step.failed .agent-step-icon { background: var(--red-light); border-color: var(--red); color: var(--red-text); }
+.agent-step-body { flex: 1; min-width: 0; padding-top: 1px; }
+.agent-step-name { font-size: 12.5px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
+.agent-step-msg { font-size: 12px; color: var(--text-3); line-height: 1.5; }
+.agent-step-meta { display: inline-block; margin-top: 4px; font-size: 11px; font-weight: 600; color: var(--blue); background: var(--blue-light); border-radius: 4px; padding: 2px 7px; }
+.agent-step-indicator { flex-shrink: 0; display: flex; align-items: center; padding-top: 3px; }
+
+/* Export row (used in full report) */
+.inv-export-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.inv-export-label { font-size: 12px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.06em; }
+.inv-export-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.badge-simple  { background: #F0FDF4; color: #15803D; border: 1px solid #BBF7D0; }
+.badge-complex { background: #EFF6FF; color: #1D4ED8; border: 1px solid #BFDBFE; }
+
+/* ─── REPORT BANNER ─── */
+.report-banner-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px 20px;
+    background: var(--bg-card);
+    border: 1.5px solid var(--green-mid);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 0 0 4px rgba(34,197,94,0.06);
+    animation: bannerIn 0.4s cubic-bezier(0.34,1.56,0.64,1) both;
+}
+@keyframes bannerIn {
+    from { opacity: 0; transform: translateY(12px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+.report-banner-left { display: flex; align-items: center; gap: 14px; }
+.report-banner-icon {
+    width: 40px; height: 40px;
+    border-radius: 12px;
+    background: var(--green-light);
+    border: 1px solid var(--green-mid);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; color: var(--green-text);
+    flex-shrink: 0;
+}
+.report-banner-title { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
+.report-banner-sub { font-size: 12px; color: var(--text-3); }
+.report-banner-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: var(--blue);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius);
+    font-size: 13.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+    flex-shrink: 0;
+    letter-spacing: -0.01em;
+}
+.report-banner-btn:hover { background: var(--blue-text); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(37,99,235,0.3); }
+.report-banner-btn:active { transform: scale(0.98); }
+
+/* ─── FULL REPORT SECTION ─── */
+#full-report-section {
+    margin-top: 32px;
+    border-top: 2px solid var(--border);
+    animation: reportReveal 0.35s ease both;
+}
+@keyframes reportReveal {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.fr-topbar {
+    position: sticky;
+    top: var(--header-h);
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 0;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+}
+.fr-topbar-left { display: flex; align-items: center; gap: 12px; }
+.fr-topbar-icon {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    background: var(--blue-light);
+    border: 1px solid var(--blue-mid);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 17px; color: var(--blue);
+    flex-shrink: 0;
+}
+.fr-topbar-title { font-size: 15px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; }
+.fr-topbar-meta { font-size: 12px; color: var(--text-3); margin-top: 1px; }
+.fr-topbar-actions { display: flex; align-items: center; gap: 8px; }
+
+.fr-kpi-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+}
+.fr-kpi {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px 18px;
+    box-shadow: var(--shadow-sm);
+}
+.fr-kpi-label { font-size: 11px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+.fr-kpi-value { font-size: 28px; font-weight: 700; color: var(--text); letter-spacing: -0.03em; line-height: 1; }
+.fr-kpi-value.up   { color: var(--green-text); }
+.fr-kpi-value.down { color: var(--red-text); }
+
+.fr-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+.fr-col { display: flex; flex-direction: column; gap: 20px; }
+
+.fr-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+}
+.fr-card-full { margin-bottom: 20px; }
+
+.fr-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 13px 18px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+}
+.fr-card-icon {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; flex-shrink: 0;
+}
+.fr-icon-blue   { background: var(--blue-light);  color: var(--blue);       border: 1px solid var(--blue-mid); }
+.fr-icon-red    { background: var(--red-light);    color: var(--red-text);   border: 1px solid var(--red-mid); }
+.fr-icon-green  { background: var(--green-light);  color: var(--green-text); border: 1px solid var(--green-mid); }
+.fr-icon-purple { background: var(--purple-light,#F5F3FF); color: var(--purple-text,#6D28D9); border: 1px solid var(--purple-mid,#EDE9FE); }
+.fr-icon-amber  { background: var(--amber-light);  color: var(--amber-text); border: 1px solid var(--amber-mid); }
+.fr-card-title { font-size: 13.5px; font-weight: 700; color: var(--text); flex: 1; }
+.fr-conf-badge {
+    font-size: 11.5px; font-weight: 700; color: var(--green-text);
+    background: var(--green-light); border: 1px solid var(--green-mid);
+    padding: 3px 10px; border-radius: 20px;
+}
+.fr-count-badge {
+    font-size: 11px; color: var(--text-3);
+    background: var(--bg-hover); border: 1px solid var(--border);
+    padding: 2px 8px; border-radius: 20px;
+}
+.fr-card-body { padding: 16px 18px; }
+.fr-subsection-label { font-size: 10px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 10px; }
+.fr-evidence-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.fr-evidence-list li { display: flex; align-items: flex-start; gap: 8px; font-size: 13.5px; color: var(--text-2); line-height: 1.55; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.fr-evidence-list li:last-child { border-bottom: none; }
+.fr-evidence-list li i { color: var(--green); font-size: 14px; flex-shrink: 0; margin-top: 2px; }
+
+.fr-agents-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1px; background: var(--border); }
+.fr-agent-cell { background: var(--bg-card); padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; }
+.fr-agent-cell-header { display: flex; align-items: center; gap: 9px; }
+.fr-agent-cell-icon { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; }
+.fr-agent-cell-icon.done   { background: var(--green-light); color: var(--green-text); border: 1px solid var(--green-mid); }
+.fr-agent-cell-icon.failed { background: var(--red-light);   color: var(--red-text);   border: 1px solid var(--red-mid); }
+.fr-agent-cell-icon.skip   { background: var(--bg);          color: var(--text-3);     border: 1px solid var(--border); }
+.fr-agent-cell-name { font-size: 12.5px; font-weight: 700; color: var(--text); }
+.fr-agent-cell-msg { font-size: 12px; color: var(--text-3); line-height: 1.5; }
+.fr-agent-cell-output { font-size: 11.5px; color: var(--blue); background: var(--blue-light); border-radius: 4px; padding: 3px 8px; display: inline-block; font-weight: 600; }
+
+.result-item { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--border); transition: background 0.1s; }
+.result-item:last-child { border-bottom: none; }
+.result-item:hover { background: var(--bg-hover); }
+.result-item-num { width: 20px; height: 20px; border-radius: 5px; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
+.result-item-num.green { background: var(--green-light); color: var(--green-text); }
+.result-item-num.red   { background: var(--red-light);   color: var(--red-text); }
+.result-item-body { flex: 1; font-size: 13px; line-height: 1.65; color: var(--text-2); }
+.result-item-body strong { color: var(--text); font-weight: 600; }
+.result-item-body p { margin: 0; }
+
+.inv-tree-body { padding: 14px; }
+.inv-tree-root { font-size: 13px; font-weight: 700; color: var(--text); padding: 7px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 8px; }
+.inv-tree-branch { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12.5px; color: var(--text-2); line-height: 1.4; }
+.inv-tree-glyph { color: var(--text-4); font-size: 11px; flex-shrink: 0; font-family: monospace; }
+.inv-tree-val { font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 20px; flex-shrink: 0; }
+.inv-tree-val.neg { background: var(--red-light); color: var(--red-text); }
+.inv-tree-val.pos { background: var(--green-light); color: var(--green-text); }
+.inv-tree-val.neu { background: var(--bg); color: var(--text-3); border: 1px solid var(--border); }
+
+.inv-chart-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
+.inv-chart-title { font-size: 11.5px; font-weight: 600; color: var(--text-2); margin-bottom: 10px; }
+
+.fr-body { padding: 0 0 40px; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ─── RESPONSIVE ─── */
+@media (max-width: 1024px) {
+    .inv-shell { grid-template-columns: 1fr; }
+    .inv-sidebar { border-right: none; border-bottom: 1px solid var(--border); padding: 0 0 16px; position: static; max-height: none; }
+    .inv-center { padding: 0; }
+    .fr-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 768px) {
+    .dag-row-top { grid-template-columns: repeat(3, 1fr); }
+    .dag-row-bot { grid-template-columns: 1fr 1fr 1fr; }
+    .inv-empty-features { grid-template-columns: 1fr; }
+    .fr-grid { grid-template-columns: 1fr; }
+    .fr-kpi-strip { grid-template-columns: 1fr 1fr; }
+    .report-banner-card { flex-direction: column; align-items: flex-start; }
+}
+</style>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+requireAuth();
+
+let currentInvId    = null;
+let currentResult   = null;
+let doneSteps       = 0;
+let totalSteps      = 8;
+let isSimpleQuery   = false;
+let agentDetailOpen = true;
+let frActiveCharts  = [];
+let timerInterval   = null;
+let timerStart      = null;
+let selectedNode    = null;
+let nodeOutputs     = {};
+
+const AGENTS = [
+    { id:'domain_discovery', label:'Domain',    icon:'ti-world',       row:0 },
+    { id:'planner',          label:'Planner',   icon:'ti-map',         row:0 },
+    { id:'data_analyst',     label:'Analyst',   icon:'ti-chart-bar',   row:0 },
+    { id:'rag',              label:'Memory',    icon:'ti-books',       row:0 },
+    { id:'forecast',         label:'Forecast',  icon:'ti-trending-up', row:0 },
+    { id:'root_cause',       label:'Root Cause',icon:'ti-search',      row:1 },
+    { id:'recommend',        label:'Recommend', icon:'ti-bulb',        row:1 },
+    { id:'executive',        label:'Executive', icon:'ti-report',      row:1 },
+];
+
+window.onload = () => {
+    buildDAG();
+    loadFiles();
+    const prefill = localStorage.getItem('prefill_question');
+    if (prefill) {
+        document.getElementById('question-input').value = prefill;
+        localStorage.removeItem('prefill_question');
+    }
+};
+
+/* ── DAG BUILD ── */
+function buildDAG() {
+    const canvas = document.getElementById('dag-canvas');
+    const row0   = AGENTS.filter(a => a.row === 0);
+    const row1   = AGENTS.filter(a => a.row === 1);
+    canvas.innerHTML = '';
+
+    const topRow = document.createElement('div');
+    topRow.className = 'dag-row dag-row-top';
+    row0.forEach(agent => topRow.appendChild(makeNodeEl(agent)));
+    canvas.appendChild(topRow);
+
+    const sep = document.createElement('div');
+    sep.className = 'dag-row-label';
+    sep.innerHTML = '<span>Analysis Phase</span>';
+    canvas.appendChild(sep);
+
+    const botRow = document.createElement('div');
+    botRow.className = 'dag-row dag-row-bot';
+    row1.forEach(agent => botRow.appendChild(makeNodeEl(agent)));
+    const spacer = document.createElement('div');
+    spacer.style.cssText = 'grid-column: span 1;';
+    botRow.appendChild(spacer);
+    canvas.appendChild(botRow);
+}
+
+function makeNodeEl(agent) {
+    const div = document.createElement('div');
+    div.className = 'dag-node waiting';
+    div.id = `dag-node-${agent.id}`;
+    div.title = `${agent.label} — click to view output`;
+    div.onclick = () => openDrawer(agent.id);
+    div.innerHTML = `
+        <div class="dag-node-badge">
+            <i class="ti ${agent.icon}" aria-hidden="true"></i>
+        </div>
+        <div class="dag-node-check"><i class="ti ti-check" aria-hidden="true"></i></div>
+        <div class="dag-node-label">${agent.label}</div>
+        <div class="dag-node-status" id="dag-chip-${agent.id}">Waiting</div>
+    `;
+    return div;
+}
+
+function updateDAGNode(agentId, status, detail) {
+    const node = document.getElementById(`dag-node-${agentId}`);
+    if (!node) return;
+    node.classList.remove('waiting','running','done','failed');
+    node.classList.add(status);
+    const chip = document.getElementById(`dag-chip-${agentId}`);
+    if (chip) {
+        if      (status === 'running') chip.textContent = 'Running…';
+        else if (status === 'done')    chip.textContent = detail || 'Done';
+        else if (status === 'failed')  chip.textContent = 'Failed';
+        else                           chip.textContent = 'Waiting';
+    }
+}
+
+function resetDAG() {
+    AGENTS.forEach(a => {
+        const node = document.getElementById(`dag-node-${a.id}`);
+        if (node) { node.classList.remove('running','done','failed','selected'); node.classList.add('waiting'); }
+        const chip = document.getElementById(`dag-chip-${a.id}`);
+        if (chip) chip.textContent = 'Waiting';
+    });
+    closeDrawer();
+    nodeOutputs = {};
+}
+
+/* ── PROGRESS RING ── */
+function updateProgressRing(done, total) {
+    const pct    = total > 0 ? Math.round((done / total) * 100) : 0;
+    const circ   = 113.1;
+    const offset = circ - (pct / 100) * circ;
+    const ring   = document.getElementById('dag-ring');
+    if (ring) ring.style.strokeDashoffset = offset;
+    const label  = document.getElementById('dag-ring-label');
+    if (label) label.textContent = pct + '%';
+    const sub    = document.getElementById('dag-sub-text');
+    if (sub) sub.textContent = `${done} of ${total} agents complete`;
+}
+
+/* ── TIMER ── */
+function startTimer() {
+    timerStart = Date.now();
+    const el   = document.getElementById('dag-elapsed');
+    const span = document.getElementById('dag-timer');
+    if (el) el.style.display = 'flex';
+    timerInterval = setInterval(() => {
+        const s = Math.floor((Date.now() - timerStart) / 1000);
+        if (span) span.textContent = s < 60 ? `${s}s` : `${Math.floor(s/60)}m ${s%60}s`;
+    }, 1000);
+}
+function stopTimer() { if (timerInterval) { clearInterval(timerInterval); timerInterval = null; } }
+
+/* ── DRAWER ── */
+function openDrawer(agentId) {
+    const agent  = AGENTS.find(a => a.id === agentId);
+    const output = nodeOutputs[agentId];
+    if (selectedNode) {
+        const prev = document.getElementById(`dag-node-${selectedNode}`);
+        if (prev) prev.classList.remove('selected');
+    }
+    selectedNode = agentId;
+    const node = document.getElementById(`dag-node-${agentId}`);
+    if (node) node.classList.add('selected');
+    document.getElementById('dag-drawer-title').textContent = `${agent ? agent.label : agentId} — Output`;
+    const nodeEl = document.getElementById(`dag-node-${agentId}`);
+    const color  = nodeEl
+        ? (nodeEl.classList.contains('done')    ? '#22C55E'
+         : nodeEl.classList.contains('running') ? '#F59E0B'
+         : nodeEl.classList.contains('failed')  ? '#EF4444'
+         : 'var(--border)') : 'var(--border)';
+    const dot = document.getElementById('dag-drawer-dot');
+    dot.style.background = color;
+    dot.style.boxShadow  = `0 0 6px ${color}80`;
+    const body = document.getElementById('dag-drawer-body');
+    if (!output) {
+        body.innerHTML = `<div style="color:var(--text-3);font-size:13px;">This agent hasn't run yet.</div>`;
+    } else {
+        const items = [];
+        if (output.message) items.push(output.message);
+        if (output.summary && output.summary !== output.message) items.push(output.summary);
+        body.innerHTML = items.length
+            ? items.map(txt => `<div class="inv-drawer-item"><div class="inv-drawer-bullet"></div><div>${escHtml(txt)}</div></div>`).join('')
+            : `<div style="color:var(--text-3);font-size:13px;">No detailed output available.</div>`;
+    }
+    document.getElementById('dag-drawer').style.display = 'block';
+}
+
+function closeDrawer() {
+    document.getElementById('dag-drawer').style.display = 'none';
+    if (selectedNode) {
+        const node = document.getElementById(`dag-node-${selectedNode}`);
+        if (node) node.classList.remove('selected');
+        selectedNode = null;
+    }
+}
+
+/* ── LOAD FILES ── */
+async function loadFiles() {
+    const res = await apiFetch('/files/list');
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    const sel  = document.getElementById('file-selector');
+    if (data.files.length === 0) {
+        sel.innerHTML = '<option value="">No datasets — upload on Dashboard</option>';
+        return;
+    }
+    sel.innerHTML = '<option value="">Select a dataset…</option>' +
+        data.files.map(f => `<option value="${f.filename}">${f.filename} (${formatSize(f.size_kb)})</option>`).join('');
+    const activeFile = localStorage.getItem('active_file');
+    if (activeFile) { sel.value = activeFile; onFileSelect(); }
+    // NOTE: do NOT remove active_file here — keep it so returning to this
+    // page restores the selection automatically
+}
+
+function onFileSelect() {
+    const filename = document.getElementById('file-selector').value;
+    const meta     = document.getElementById('file-meta');
+    if (filename) {
+        meta.style.display = 'flex';
+        document.getElementById('file-meta-text').textContent = filename;
+        localStorage.setItem('active_file', filename);   // ← ADD THIS LINE
+    } else {
+        meta.style.display = 'none';
+        document.getElementById('domain-card').style.display = 'none';
+        localStorage.removeItem('active_file');           // ← ADD THIS LINE
+    }
+}
+
+function useQuestion(btn) {
+    document.getElementById('question-input').value = btn.textContent;
+    document.getElementById('question-input').focus();
+}
+function handleKey(e) { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) startInvestigation(); }
+
+/* ── START INVESTIGATION ── */
+async function startInvestigation() {
+    const question = document.getElementById('question-input').value.trim();
+    const filename = document.getElementById('file-selector').value;
+    if (!question) { pulseInput('question-input'); return; }
+    if (!filename)  { pulseInput('file-selector');  return; }
+
+    frActiveCharts.forEach(c => c.destroy()); frActiveCharts = [];
+    currentResult = null;
+
+    doneSteps = 0; currentInvId = null; isSimpleQuery = false; totalSteps = 8;
+    stopTimer(); resetDAG(); updateProgressRing(0, 8);
+
+    document.getElementById('full-report-section').style.display = 'none';
+    document.getElementById('report-banner').style.display       = 'none';
+    document.getElementById('empty-state').style.display         = 'none';
+    document.getElementById('investigation-panel').style.display = 'flex';
+    document.getElementById('agents-detail-card').style.display  = 'none';
+    document.getElementById('agent-steps').innerHTML             = '';
+    document.getElementById('domain-card').style.display         = 'none';
+    document.getElementById('export-pdf-btn').style.display      = 'none';
+    document.getElementById('export-docx-btn').style.display     = 'none';
+    document.getElementById('query-type-badge').style.display    = 'none';
+    document.getElementById('dag-sub-text').textContent          = 'Starting pipeline…';
+
+    document.getElementById('inv-question-display').textContent = question;
+    setStatusBadge('running');
+
+    const btn = document.getElementById('investigate-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner" style="border-top-color:#fff;border-color:rgba(255,255,255,0.3)"></div> Investigating…';
+
+    document.getElementById('investigation-panel').scrollIntoView({ behavior:'smooth' });
+    startTimer();
+
+    try {
+        const res  = await apiFetch('/investigations/start', {
+            method: 'POST', body: JSON.stringify({ question, filename })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            setStatusBadge('failed');
+            addAgentStep('error','ti-alert-circle','Error', data.detail || 'Failed to start', 'failed');
+            resetBtn(); stopTimer(); return;
+        }
+        currentInvId = data.investigation_id;
+        if (data.query_type === 'simple') { isSimpleQuery = true; totalSteps = 1; showQueryTypeBadge('simple'); }
+        else { showQueryTypeBadge('complex'); }
+        updateProgressRing(0, totalSteps);
+        streamUpdates(data.investigation_id);
+    } catch(e) {
+        setStatusBadge('failed');
+        addAgentStep('error','ti-alert-circle','Error','Connection failed','failed');
+        resetBtn(); stopTimer();
+    }
+}
+
+function showQueryTypeBadge(type) {
+    const el = document.getElementById('query-type-badge');
+    el.style.display = 'inline-flex';
+    if (type === 'simple') { el.className = 'badge badge-simple'; el.textContent = '⚡ Direct Query'; }
+    else                   { el.className = 'badge badge-complex'; el.textContent = '🔬 Full Pipeline'; }
+}
+
+/* ── SSE STREAM ── */
+function streamUpdates(invId) {
+    const token = getToken();
+    const es    = new EventSource(`/investigations/${invId}/stream?token=${token}`);
+
+    es.onmessage = function(e) {
+        const data = JSON.parse(e.data);
+
+        if (data.type === 'agent_step') {
+            document.getElementById('agents-detail-card').style.display = 'block';
+            nodeOutputs[data.agent] = { message: data.message, summary: data.output_summary || data.detail, status: data.status };
+            updateDAGNode(data.agent, data.status, data.output_summary || data.detail);
+            addAgentStep(data.agent, agentIcon(data.agent), agentLabel(data.agent), data.message, data.status, data.output_summary);
+            if (data.status === 'done') { doneSteps++; updateProgressRing(doneSteps, totalSteps); }
+            if (data.agent === 'domain_discovery' && data.status === 'done' && data.domain) showDomainCard(data.domain);
+        }
+
+        if (data.type === 'complete') {
+            es.close(); stopTimer();
+            setStatusBadge('completed');
+            document.getElementById('dag-sub-text').textContent = 'All agents complete ✓';
+            currentResult = data.result;
+            showReportBanner();
+            resetBtn();
+            document.getElementById('export-pdf-btn').style.display  = 'inline-flex';
+            document.getElementById('export-docx-btn').style.display = 'inline-flex';
+        }
+
+        if (data.type === 'error') {
+            es.close(); stopTimer();
+            setStatusBadge('failed');
+            document.getElementById('dag-sub-text').textContent = 'Pipeline encountered an error';
+            showToast('Investigation failed', 'error');
+            resetBtn();
+        }
+    };
+
+    es.onerror = function() { es.close(); resetBtn(); stopTimer(); };
+}
+
+/* ── AGENT LOG ── */
+function addAgentStep(id, iconCls, label, message, status, outputSummary) {
+    const container = document.getElementById('agent-steps');
+    const existing  = document.getElementById(`step-${id}`);
+    const statusIcon =
+        status === 'running' ? `<div class="agent-step-indicator"><div class="spinner" style="width:14px;height:14px;border-width:1.5px;"></div></div>`
+      : status === 'done'    ? `<div class="agent-step-indicator"><i class="ti ti-circle-check" style="color:var(--green);font-size:16px;" aria-hidden="true"></i></div>`
+      : status === 'failed'  ? `<div class="agent-step-indicator"><i class="ti ti-circle-x" style="color:var(--red-text);font-size:16px;" aria-hidden="true"></i></div>`
+      : '';
+    const div = document.createElement('div');
+    div.className = `agent-step ${status}`;
+    div.id        = `step-${id}`;
+    div.innerHTML = `
+        <div class="agent-step-icon"><i class="ti ${iconCls}" aria-hidden="true"></i></div>
+        <div class="agent-step-body">
+            <div class="agent-step-name">${label}</div>
+            <div class="agent-step-msg">${message}</div>
+            ${outputSummary ? `<div class="agent-step-meta">${outputSummary}</div>` : ''}
+        </div>
+        ${statusIcon}`;
+    if (existing) existing.replaceWith(div);
+    else          container.appendChild(div);
+}
+
+function toggleAgentDetail() {
+    agentDetailOpen = !agentDetailOpen;
+    document.getElementById('agent-steps').style.display = agentDetailOpen ? 'block' : 'none';
+    document.getElementById('toggle-detail-btn').innerHTML = agentDetailOpen
+        ? '<i class="ti ti-chevron-up" aria-hidden="true"></i> Collapse'
+        : '<i class="ti ti-chevron-down" aria-hidden="true"></i> Expand';
+}
+
+/* ── DOMAIN CARD ── */
+function showDomainCard(domain) {
+    const card = document.getElementById('domain-card');
+    card.style.display = 'flex';
+    document.getElementById('domain-name').textContent =
+        domain.name || (domain.tag ? domain.tag.charAt(0).toUpperCase() + domain.tag.slice(1) : '—');
+    document.getElementById('domain-conf-badge').textContent = domain.confidence ? `${domain.confidence}%` : '';
+    document.getElementById('domain-objective').textContent  = domain.objective || '—';
+    document.getElementById('domain-entities').innerHTML =
+        (domain.entities || []).map(e => `<span class="domain-entity">${e}</span>`).join('');
+}
+
+/* ── REPORT BANNER ── */
+function showReportBanner() {
+    const banner = document.getElementById('report-banner');
+    banner.style.display = 'block';
+    banner.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
+/* ── OPEN / CLOSE FULL REPORT ── */
+function openFullReport() {
+    if (!currentResult) return;
+
+    const section = document.getElementById('full-report-section');
+    section.style.display = 'block';
+
+    const q = document.getElementById('inv-question-display').textContent;
+    document.getElementById('fr-question-label').textContent = q || 'Investigation Report';
+    const filename = document.getElementById('file-selector').value;
+    const conf     = currentResult.confidence || (currentResult.executive_summary || {}).confidence;
+    document.getElementById('fr-meta-label').textContent =
+        [filename, conf ? `${conf}% confidence` : null].filter(Boolean).join(' · ');
+
+    frActiveCharts.forEach(c => c.destroy());
+    frActiveCharts = [];
+
+    renderFRKpis(currentResult);
+    renderFRExec(currentResult);
+    renderFRCauses(currentResult);
+    renderFRTree(currentResult);
+    renderFRRecs(currentResult);
+    renderFRCharts(currentResult);
+    renderFRAnswer(currentResult);
+    renderFRAgents();
+
+    section.scrollIntoView({ behavior:'smooth' });
+}
+
+function closeFullReport() {
+    document.getElementById('full-report-section').style.display = 'none';
+    document.getElementById('report-banner').scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
+/* ── FULL REPORT RENDERERS ── */
+function renderFRKpis(result) {
+    const strip  = document.getElementById('fr-kpi-strip');
+    const causes = parseItems(result.root_causes || []);
+    const recs   = parseItems(result.recommendations || []);
+    const conf   = result.confidence || (result.executive_summary||{}).confidence;
+    const kpis   = [];
+    if (causes.length) kpis.push({ label:'Root Causes',     value:causes.length, dir:'' });
+    if (recs.length)   kpis.push({ label:'Recommendations', value:recs.length,   dir:'up' });
+    if (conf)          kpis.push({ label:'Confidence',       value:conf+'%',      dir:'' });
+    if (result.forecast_horizon) kpis.push({ label:'Forecast Horizon', value:result.forecast_horizon, dir:'' });
+    kpis.push({ label:'Agents Run', value: AGENTS.length, dir:'' });
+    strip.innerHTML = kpis.map(k => `
+        <div class="fr-kpi">
+            <div class="fr-kpi-label">${k.label}</div>
+            <div class="fr-kpi-value ${k.dir}">${k.value}</div>
+        </div>`).join('');
+}
+
+function renderFRExec(result) {
+    const exec    = result.executive_summary || {};
+    const conf    = exec.confidence || result.confidence;
+    const el      = document.getElementById('fr-conf-badge');
+    if (el) el.textContent = conf ? `${conf}% confidence` : 'Complete';
+    const evidence = (exec.evidence && exec.evidence.length) ? exec.evidence : extractEvidence(result);
+    document.getElementById('fr-evidence-list').innerHTML = evidence.map(e =>
+        `<li><i class="ti ti-circle-check" aria-hidden="true"></i>${e}</li>`
+    ).join('');
+}
+
+function renderFRCauses(result) {
+    const causes = parseItems(result.root_causes || []);
+    if (!causes.length) return;
+    document.getElementById('fr-causes-card').style.display  = 'block';
+    document.getElementById('fr-causes-count').textContent   = `${causes.length} found`;
+    document.getElementById('fr-causes-list').innerHTML = causes.map((c,i) => `
+        <div class="result-item">
+            <div class="result-item-num red">${i+1}</div>
+            <div class="result-item-body">${marked.parse(c)}</div>
+        </div>`).join('');
+}
+
+function renderFRTree(result) {
+    const tree = result.evidence_tree || buildTreeFromStructured(result) || buildTreeFromCauses(result);
+    if (!tree || !tree.root) return;
+    document.getElementById('fr-tree-card').style.display  = 'block';
+    document.getElementById('fr-tree-count').textContent   = `${(tree.branches||[]).length} branches`;
+    document.getElementById('fr-tree-body').innerHTML = `
+        <div class="inv-tree-body">
+            <div class="inv-tree-root">${tree.root}</div>
+            ${(tree.branches||[]).map((b,i,arr) => {
+                const glyph  = i === arr.length - 1 ? '└─' : '├─';
+                const valCls = b.direction === 'negative' ? 'neg' : b.direction === 'positive' ? 'pos' : 'neu';
+                return `<div class="inv-tree-branch" style="padding-left:${(b.depth||0)*14}px">
+                    <span class="inv-tree-glyph">${glyph}</span>
+                    <span style="flex:1;font-size:13px;color:var(--text-2)">${b.label}</span>
+                    ${b.value ? `<span class="inv-tree-val ${valCls}">${b.value}</span>` : ''}
+                </div>`;
+            }).join('')}
+        </div>`;
+}
+
+function renderFRRecs(result) {
+    const recs = parseItems(result.recommendations || []);
+    if (!recs.length) return;
+    document.getElementById('fr-recs-card').style.display  = 'block';
+    document.getElementById('fr-recs-count').textContent   = `${recs.length} actions`;
+    document.getElementById('fr-recs-list').innerHTML = recs.map((r,i) => `
+        <div class="result-item">
+            <div class="result-item-num green">${i+1}</div>
+            <div class="result-item-body">${marked.parse(r)}</div>
+        </div>`).join('');
+}
+
+function renderFRCharts(result) {
+    const charts = result.charts || [];
+    if (!charts.length && !result.forecast_data && !result.trend_data && !result.correlation_data) return;
+    document.getElementById('fr-charts-card').style.display = 'block';
+    const body = document.getElementById('fr-charts-body');
+    body.innerHTML = '';
+    if (result.trend_data)       renderLineChartInto(body, 'Trend Analysis',  result.trend_data, 'fr-trend', frActiveCharts);
+    if (result.forecast_data)    renderForecastChartInto(body, result.forecast_data, frActiveCharts);
+    if (result.correlation_data) renderCorrelationChartInto(body, result.correlation_data, frActiveCharts);
+    charts.forEach((cd,i) => {
+        if (cd.type === 'line') renderLineChartInto(body, cd.title, cd.data, `fr-chart-${i}`, frActiveCharts);
+        if (cd.type === 'bar')  renderBarChartInto(body,  cd.title, cd.data, `fr-chart-${i}`, frActiveCharts);
+    });
+}
+
+function renderFRAnswer(result) {
+    if (!isSimpleQuery) return;
+    document.getElementById('fr-answer-card').style.display = 'block';
+    document.getElementById('fr-answer-body').innerHTML = marked.parse(
+        result.summary || result.final_summary || 'No answer returned.'
+    );
+}
+
+function renderFRAgents() {
+    const grid  = document.getElementById('fr-agents-grid');
+    const count = document.getElementById('fr-agents-count');
+    const done  = AGENTS.filter(a => nodeOutputs[a.id] && nodeOutputs[a.id].status === 'done').length;
+    count.textContent = `${done} / ${AGENTS.length} completed`;
+    grid.innerHTML = AGENTS.map(agent => {
+        const out   = nodeOutputs[agent.id];
+        const st    = out ? out.status : 'skip';
+        const cls   = st === 'done' ? 'done' : st === 'failed' ? 'failed' : 'skip';
+        const msg   = out ? (out.message || '') : 'Did not run';
+        const meta  = out ? (out.summary || '') : '';
+        return `<div class="fr-agent-cell">
+            <div class="fr-agent-cell-header">
+                <div class="fr-agent-cell-icon ${cls}">
+                    <i class="ti ${agent.icon}" aria-hidden="true"></i>
+                </div>
+                <div class="fr-agent-cell-name">${agent.label}</div>
+            </div>
+            <div class="fr-agent-cell-msg">${escHtml(msg)}</div>
+            ${meta ? `<span class="fr-agent-cell-output">${escHtml(meta)}</span>` : ''}
+        </div>`;
+    }).join('');
+}
+
+/* ── CHART HELPERS ── */
+function makeChartWrap(title, canvasId) {
+    const w = document.createElement('div');
+    w.className = 'inv-chart-wrap';
+    w.innerHTML = `<div class="inv-chart-title">${title}</div><canvas id="${canvasId}" style="max-height:220px;"></canvas>`;
+    return w;
+}
+
+function renderLineChartInto(container, title, data, canvasId, chartArr) {
+    const wrap = makeChartWrap(title, canvasId);
+    container.appendChild(wrap);
+    const ctx = document.getElementById(canvasId).getContext('2d');
+    chartArr.push(new Chart(ctx, {
+        type:'line',
+        data:{ labels:data.labels||[], datasets:[{ label:data.series_label||title, data:data.values||[], borderColor:'#2563EB', backgroundColor:'rgba(37,99,235,0.07)', fill:true, tension:0.4, pointRadius:3 }] },
+        options:chartOptions(data.y_label),
+    }));
+}
+
+function renderForecastChartInto(container, data, chartArr) {
+    const wrap = makeChartWrap('Forecast — '+(data.horizon||'90 days'), 'fr-forecast');
+    container.appendChild(wrap);
+    const ctx = document.getElementById('fr-forecast').getContext('2d');
+    chartArr.push(new Chart(ctx, {
+        type:'line',
+        data:{ labels:data.labels||[], datasets:[
+            { label:'Historical', data:data.historical||[], borderColor:'#2563EB', backgroundColor:'rgba(37,99,235,0.06)', fill:true, tension:0.4, pointRadius:2 },
+            { label:'Forecast',   data:data.forecast||[],   borderColor:'#22C55E', backgroundColor:'rgba(34,197,94,0.07)',  fill:true, tension:0.4, borderDash:[5,5], pointRadius:2 },
+        ]},
+        options:chartOptions('Value'),
+    }));
+}
+
+function renderCorrelationChartInto(container, data, chartArr) {
+    const wrap   = makeChartWrap('Correlation with Target', 'fr-corr');
+    container.appendChild(wrap);
+    const colors = (data.values||[]).map(v => v >= 0 ? 'rgba(37,99,235,0.7)' : 'rgba(239,68,68,0.7)');
+    const ctx    = document.getElementById('fr-corr').getContext('2d');
+    chartArr.push(new Chart(ctx, {
+        type:'bar',
+        data:{ labels:data.labels||[], datasets:[{ label:'Correlation', data:data.values||[], backgroundColor:colors, borderRadius:4 }] },
+        options:{ ...chartOptions('Correlation'), indexAxis:'y' },
+    }));
+}
+
+function renderBarChartInto(container, title, data, canvasId, chartArr) {
+    const wrap = makeChartWrap(title, canvasId);
+    container.appendChild(wrap);
+    const ctx = document.getElementById(canvasId).getContext('2d');
+    chartArr.push(new Chart(ctx, {
+        type:'bar',
+        data:{ labels:data.labels||[], datasets:[{ label:data.series_label||title, data:data.values||[], backgroundColor:'rgba(37,99,235,0.7)', borderRadius:4 }] },
+        options:chartOptions(data.y_label),
+    }));
+}
+
+function chartOptions(yLabel) {
+    return {
+        responsive:true, maintainAspectRatio:true,
+        plugins:{ legend:{ display:false }, tooltip:{ mode:'index', intersect:false } },
+        scales:{
+            x:{ grid:{ color:'rgba(0,0,0,0.04)' }, ticks:{ font:{size:10}, color:'#94A3B8' } },
+            y:{ grid:{ color:'rgba(0,0,0,0.04)' }, ticks:{ font:{size:10}, color:'#94A3B8' },
+                title:yLabel?{ display:true, text:yLabel, font:{size:10}, color:'#94A3B8' }:undefined },
+        },
+    };
+}
+
+/* ── EXPORT — fixed: includes auth token in header via fetch + blob ── */
+async function exportReport(format) {
+    if (!currentInvId) { showToast('No investigation to export', 'warning'); return; }
+    showToast(`Generating ${format.toUpperCase()} report…`, 'info', 3000);
+    try {
+        const token = getToken();
+        const res   = await fetch(`/reports/download/${currentInvId}?format=${format}`, {
+            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.detail || `Export failed (${res.status})`, 'error');
+            return;
+        }
+        const blob     = await res.blob();
+        const url      = URL.createObjectURL(blob);
+        const a        = document.createElement('a');
+        const ext      = format === 'pdf' ? 'pdf' : 'docx';
+        const question = document.getElementById('inv-question-display').textContent.slice(0, 40).replace(/[^a-z0-9]/gi, '_');
+        a.href         = url;
+        a.download     = `report_${question}_${String(currentInvId)}.${ext}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast(`${format.toUpperCase()} downloaded`, 'success');
+    } catch(e) {
+        showToast('Export failed — check connection', 'error');
+    }
+}
+
+function shareReport() {
+    if (!currentInvId) return;
+    navigator.clipboard.writeText(`${window.location.origin}/reports/view/${currentInvId}`)
+        .then(() => showToast('Report link copied to clipboard', 'success'));
+}
+
+/* ── STATUS + RESET ── */
+function setStatusBadge(status) {
+    const el  = document.getElementById('inv-status-badge');
+    const map = {
+        running:   ['badge-amber','ti-loader-2','Running'],
+        completed: ['badge-green','ti-circle-check','Complete'],
+        failed:    ['badge-red','ti-circle-x','Failed']
+    };
+    const [cls, ico, label] = map[status] || ['','ti-circle',status];
+    el.className = `badge ${cls}`;
+    el.innerHTML = `<i class="ti ${ico}" aria-hidden="true"></i> ${label}`;
+}
+
+function resetBtn() {
+    const btn = document.getElementById('investigate-btn');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="ti ti-player-play" aria-hidden="true"></i> Run Investigation';
+}
+
+function newInvestigation() {
+    frActiveCharts.forEach(c => c.destroy()); frActiveCharts = [];
+    currentResult = null; isSimpleQuery = false; totalSteps = 8;
+    stopTimer(); resetDAG(); updateProgressRing(0, 8);
+    document.getElementById('investigation-panel').style.display  = 'none';
+    document.getElementById('empty-state').style.display          = 'flex';
+    document.getElementById('full-report-section').style.display  = 'none';
+    document.getElementById('report-banner').style.display        = 'none';
+    document.getElementById('export-pdf-btn').style.display       = 'none';
+    document.getElementById('export-docx-btn').style.display      = 'none';
+    document.getElementById('query-type-badge').style.display     = 'none';
+    document.getElementById('dag-elapsed').style.display          = 'none';
+    document.getElementById('question-input').value = '';
+    document.getElementById('question-input').focus();
+}
+
+function pulseInput(id) {
+    const el = document.getElementById(id);
+    el.style.borderColor = 'var(--red)';
+    el.style.boxShadow   = '0 0 0 3px rgba(239,68,68,0.1)';
+    setTimeout(() => { el.style.borderColor=''; el.style.boxShadow=''; }, 1500);
+    el.focus();
+}
+
+/* ── TREE BUILDERS ── */
+function buildTreeFromStructured(result) {
+    const sc = result.structured_causes;
+    if (!sc || !sc.length) return null;
+    const q = document.getElementById('inv-question-display').textContent;
+    return { root: q.replace(/^"|"$/g,'') || 'Investigation', branches: sc.slice(0,6).map(c => ({ label:c.title||c.label||'', value:c.value||null, direction:c.direction||'negative', depth:0 })) };
+}
+
+function buildTreeFromCauses(result) {
+    const causes = parseItems(result.root_causes || []);
+    if (!causes.length) return null;
+    const q = document.getElementById('inv-question-display').textContent;
+    return { root: q.replace(/^"|"$/g,'') || 'Investigation Root', branches: causes.slice(0,6).map(c => ({ label:stripMarkdown(c).substring(0,60), value:null, direction:'negative', depth:0 })) };
+}
+
+function extractEvidence(result) {
+    return parseItems(result.root_causes || []).slice(0,4).map(c => stripMarkdown(c).substring(0,80));
+}
+
+/* ── UTILITIES ── */
+function parseItems(items) {
+    return items
+        .map(i => (typeof i==='string'?i:JSON.stringify(i)).trim())
+        .filter(i => i.length>15 && !i.toLowerCase().startsWith('here are') && !i.toLowerCase().startsWith('the following') && !i.toLowerCase().startsWith('below are'))
+        .map(i => i.replace(/^\d+\.\s*/,'').replace(/^[-*]\s+/,'').trim())
+        .filter(i => i.length>10);
+}
+function stripMarkdown(t) { return t.replace(/\*\*(.*?)\*\*/g,'$1').replace(/\*(.*?)\*/g,'$1').replace(/`(.*?)`/g,'$1'); }
+function escHtml(str) { return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function agentIcon(agent)  { const a=AGENTS.find(x=>x.id===agent); return a?a.icon:'ti-cpu'; }
+function agentLabel(agent) { const a=AGENTS.find(x=>x.id===agent); return a?a.label:agent; }
+function formatSize(kb)    { return kb>=1024?(kb/1024).toFixed(1)+' MB':kb.toFixed(1)+' KB'; }
+</script>
+{% endblock %}

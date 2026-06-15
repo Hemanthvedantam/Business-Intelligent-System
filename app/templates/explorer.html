@@ -1,0 +1,1251 @@
+{% extends "base.html" %}
+{% block title %}Data Explorer — ABIP{% endblock %}
+{% block breadcrumb %}Data Explorer{% endblock %}
+
+{% block topbar_actions %}
+<select id="topbar-file-select" class="form-input" style="width:220px; font-size:13px;"
+        onchange="onFileChange()">
+    <option value="">Select a dataset...</option>
+</select>
+<button class="btn btn-secondary btn-sm" id="export-btn" onclick="exportData()" disabled>
+    <i class="ti ti-download" aria-hidden="true"></i> Export
+</button>
+<button class="btn btn-primary btn-sm" id="investigate-btn" onclick="investigateDataset()" disabled>
+    <i class="ti ti-search" aria-hidden="true"></i> Investigate
+</button>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Empty / Welcome state ── -->
+<div id="welcome-state" class="anim-slide">
+    <div style="background: linear-gradient(135deg,
+            rgba(56,189,248,0.06) 0%, rgba(99,102,241,0.07) 100%);
+         border:1px solid var(--border); border-radius:var(--radius-lg);
+         padding:52px 40px; text-align:center; position:relative; overflow:hidden;">
+        <div style="position:absolute;top:0;left:0;right:0;height:2px;
+             background:linear-gradient(90deg,var(--cyan),var(--indigo),transparent);"></div>
+        <div style="width:60px;height:60px;background:var(--indigo-dim);
+             border:1px solid rgba(99,102,241,0.25);border-radius:var(--radius-lg);
+             display:flex;align-items:center;justify-content:center;
+             font-size:26px;color:var(--indigo);margin:0 auto 20px;">
+            <i class="ti ti-table" aria-hidden="true"></i>
+        </div>
+        <div style="font-size:20px;font-weight:700;color:var(--text);
+             letter-spacing:-0.02em;margin-bottom:8px;">Data Explorer</div>
+        <div style="font-size:13.5px;color:var(--text-3);line-height:1.7;
+             max-width:520px;margin:0 auto 28px;">
+            Browse, filter, sort and query any of your uploaded datasets —
+            no code required. Select a dataset from the top bar to begin.
+        </div>
+        <div style="display:flex;align-items:center;justify-content:center;gap:24px;flex-wrap:wrap;">
+            <div class="explorer-feature-pill"><i class="ti ti-filter" aria-hidden="true"></i> Column Filters</div>
+            <div class="explorer-feature-pill"><i class="ti ti-sort-ascending" aria-hidden="true"></i> Sort & Search</div>
+            <div class="explorer-feature-pill"><i class="ti ti-chart-bar" aria-hidden="true"></i> Column Stats</div>
+            <div class="explorer-feature-pill"><i class="ti ti-download" aria-hidden="true"></i> CSV Export</div>
+            <div class="explorer-feature-pill"><i class="ti ti-eye" aria-hidden="true"></i> Data Preview</div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Loading state ── -->
+<div id="loading-state" style="display:none;text-align:center;padding:80px 0;">
+    <div style="width:52px;height:52px;background:var(--indigo-dim);
+         border:1px solid rgba(99,102,241,0.3);border-radius:50%;
+         display:flex;align-items:center;justify-content:center;
+         margin:0 auto 18px;animation:pulse-ring 2s infinite;">
+        <i class="ti ti-table" style="font-size:22px;color:var(--indigo);" aria-hidden="true"></i>
+    </div>
+    <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:6px;">Loading dataset...</div>
+    <div style="font-size:13px;color:var(--text-3);" id="loading-msg">Reading file structure</div>
+</div>
+
+<!-- ── Main Explorer UI ── -->
+<div id="explorer-ui" style="display:none;">
+
+    <!-- ── Dataset Meta Bar ── -->
+    <div class="card mb-16 anim-slide" style="padding:14px 20px;">
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:32px;height:32px;background:var(--cyan-dim);
+                     border:1px solid rgba(6,182,212,0.25);border-radius:var(--radius);
+                     display:flex;align-items:center;justify-content:center;
+                     color:var(--cyan);font-size:15px;">
+                    <i class="ti ti-file-spreadsheet" aria-hidden="true"></i>
+                </div>
+                <div>
+                    <div style="font-size:13.5px;font-weight:700;color:var(--text);" id="meta-filename">—</div>
+                    <div style="font-size:11.5px;color:var(--text-3);" id="meta-sub">—</div>
+                </div>
+            </div>
+            <div class="meta-divider"></div>
+            <div class="meta-stat"><span class="meta-stat-val" id="meta-rows">—</span><span class="meta-stat-lbl">rows</span></div>
+            <div class="meta-stat"><span class="meta-stat-val" id="meta-cols">—</span><span class="meta-stat-lbl">columns</span></div>
+            <div class="meta-stat"><span class="meta-stat-val" id="meta-showing">—</span><span class="meta-stat-lbl">showing</span></div>
+            <div class="meta-stat"><span class="meta-stat-val" id="meta-filtered">—</span><span class="meta-stat-lbl">filtered</span></div>
+            <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+                <span class="badge badge-green" id="meta-quality-badge" style="display:none;">
+                    <i class="ti ti-shield-check" aria-hidden="true"></i> Clean
+                </span>
+                <span class="badge badge-amber" id="meta-issues-badge" style="display:none;">
+                    <i class="ti ti-alert-triangle" aria-hidden="true"></i>
+                    <span id="meta-issues-count">0</span> issues
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── AI Context Banner — appears automatically on dataset load ── -->
+    <div id="ai-context-banner" style="display:none; margin-bottom:16px;" class="anim-slide">
+        <div id="ai-context-inner" style="
+            background: linear-gradient(135deg, rgba(99,102,241,0.06) 0%, rgba(56,189,248,0.04) 100%);
+            border: 1px solid rgba(99,102,241,0.18);
+            border-radius: var(--radius-lg);
+            padding: 13px 18px;
+            display: flex; align-items: flex-start; gap: 12px;
+            position: relative; overflow: hidden;">
+            <div style="position:absolute;top:0;left:0;right:0;height:2px;
+                 background:linear-gradient(90deg,rgba(99,102,241,0.5),rgba(6,182,212,0.3),transparent);"></div>
+            <div style="width:28px;height:28px;flex-shrink:0;
+                 background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.2);
+                 border-radius:8px;display:flex;align-items:center;justify-content:center;
+                 font-size:13px;color:var(--indigo,#6366F1);">
+                <i class="ti ti-sparkles" aria-hidden="true"></i>
+            </div>
+            <div style="flex:1;min-width:0;">
+                <div style="font-size:12px;color:var(--text-2);line-height:1.6;"
+                     id="ai-context-text">Analysing dataset...</div>
+                <div id="ai-context-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;"></div>
+            </div>
+            <button onclick="dismissAIBanner()" style="
+                background:none;border:none;cursor:pointer;color:var(--text-3);
+                font-size:14px;padding:2px;border-radius:4px;flex-shrink:0;
+                transition:color 0.15s;display:flex;align-items:center;"
+                aria-label="Dismiss">
+                <i class="ti ti-x" aria-hidden="true"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- ── Two-panel layout ── -->
+    <div style="display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:start;">
+
+        <!-- LEFT PANEL: Column browser + stats -->
+        <div style="display:flex;flex-direction:column;gap:14px;position:sticky;top:80px;">
+
+            <!-- Global search -->
+            <div class="card" style="padding:12px 14px;">
+                <div style="position:relative;">
+                    <i class="ti ti-search" style="position:absolute;left:10px;top:50%;
+                       transform:translateY(-50%);color:var(--text-3);font-size:13px;
+                       pointer-events:none;" aria-hidden="true"></i>
+                    <input id="global-search" type="text" class="form-input"
+                           placeholder="Search all values..."
+                           style="padding-left:30px;font-size:12.5px;"
+                           oninput="applyFilters()" />
+                </div>
+            </div>
+
+            <!-- Ask AI -->
+            <div class="card" style="padding:12px 14px;">
+                <div style="font-size:11px;font-weight:700;color:var(--text-3);
+                     text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">
+                    <i class="ti ti-sparkles" aria-hidden="true"></i> Ask AI about this data
+                </div>
+                <textarea id="ai-ask-input" class="form-input" rows="2"
+                    placeholder="e.g. Why do certain regions have more missing values?"
+                    style="font-size:12.5px;resize:none;margin-bottom:8px;"></textarea>
+                <button class="btn btn-primary btn-sm w-full" style="justify-content:center;" onclick="askAI()">
+                    <i class="ti ti-player-play" aria-hidden="true"></i> Investigate
+                </button>
+            </div>
+
+            <!-- Column list -->
+            <div class="card" style="padding:0;overflow:hidden;">
+                <div style="padding:12px 14px;border-bottom:1px solid var(--border);
+                     display:flex;align-items:center;justify-content:space-between;">
+                    <div style="font-size:12px;font-weight:700;color:var(--text);
+                         text-transform:uppercase;letter-spacing:0.06em;">Columns</div>
+                    <span class="badge badge-gray" id="col-count-badge">0</span>
+                </div>
+                <div id="column-list" style="max-height:380px;overflow-y:auto;"></div>
+            </div>
+
+            <!-- Active filters -->
+            <div class="card" id="filters-card" style="padding:0;overflow:hidden;display:none;">
+                <div style="padding:12px 14px;border-bottom:1px solid var(--border);
+                     display:flex;align-items:center;justify-content:space-between;">
+                    <div style="font-size:12px;font-weight:700;color:var(--text);
+                         text-transform:uppercase;letter-spacing:0.06em;">Active Filters</div>
+                    <button class="btn btn-ghost btn-sm" style="font-size:11px;padding:2px 8px;"
+                            onclick="clearAllFilters()">Clear all</button>
+                </div>
+                <div id="active-filters-list" style="padding:10px 14px;
+                     display:flex;flex-direction:column;gap:6px;"></div>
+            </div>
+
+            <!-- Column stats panel -->
+            <div class="card" id="col-stats-panel" style="display:none;padding:0;overflow:hidden;">
+                <div style="padding:12px 14px;border-bottom:1px solid var(--border);
+                     display:flex;align-items:center;justify-content:space-between;">
+                    <div style="font-size:12px;font-weight:700;color:var(--text);
+                         text-transform:uppercase;letter-spacing:0.06em;">Column Stats</div>
+                    <button onclick="closeColStats()" style="background:none;border:none;
+                            color:var(--text-3);cursor:pointer;font-size:14px;padding:2px;"
+                            aria-label="Close">
+                        <i class="ti ti-x" aria-hidden="true"></i>
+                    </button>
+                </div>
+                <div id="col-stats-body" style="padding:14px;"></div>
+            </div>
+
+        </div>
+
+        <!-- RIGHT PANEL: Toolbar + Table -->
+        <div style="display:flex;flex-direction:column;gap:12px;">
+
+            <!-- Table toolbar -->
+            <div class="card" style="padding:10px 14px;">
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <span style="font-size:12px;color:var(--text-3);white-space:nowrap;">Rows per page</span>
+                        <select id="page-size-select" class="form-input"
+                                style="width:70px;font-size:12px;padding:5px 8px;"
+                                onchange="onPageSizeChange()">
+                            <option value="25">25</option>
+                            <option value="50" selected>50</option>
+                            <option value="100">100</option>
+                            <option value="200">200</option>
+                        </select>
+                    </div>
+                    <div class="meta-divider" style="height:20px;"></div>
+                    <div style="position:relative;">
+                        <button class="btn btn-secondary btn-sm" id="col-toggle-btn"
+                                onclick="toggleColMenu()" style="font-size:12px;">
+                            <i class="ti ti-layout-columns" aria-hidden="true"></i> Columns
+                            <span class="badge badge-blue" id="hidden-col-badge"
+                                  style="display:none;margin-left:4px;font-size:10px;"></span>
+                        </button>
+                        <div style="position:relative;">
+                        <button class="btn btn-secondary btn-sm" id="views-toggle-btn"
+                                onclick="toggleViewsMenu()" style="font-size:12px;">
+                            <i class="ti ti-bookmark" aria-hidden="true"></i> Views
+                        </button>
+                        <div id="views-menu" style="display:none;position:absolute;
+                             top:calc(100% + 6px);left:0;z-index:100;
+                             background:var(--bg-card);border:1px solid var(--border);
+                             border-radius:var(--radius);box-shadow:var(--shadow-lg);
+                             min-width:220px;max-height:320px;overflow-y:auto;padding:8px 0;">
+                        </div>
+                    </div>
+                        <div id="col-visibility-menu" style="display:none;position:absolute;
+                             top:calc(100% + 6px);left:0;z-index:100;
+                             background:var(--bg-card);border:1px solid var(--border);
+                             border-radius:var(--radius);box-shadow:var(--shadow-lg);
+                             min-width:200px;max-height:300px;overflow-y:auto;padding:8px 0;">
+                        </div>
+                    </div>
+                    <div id="sort-indicator" style="display:none;font-size:12px;
+                         color:var(--text-3);display:flex;align-items:center;gap:5px;">
+                        <i class="ti ti-arrows-sort" aria-hidden="true"></i>
+                        <span id="sort-label">—</span>
+                        <button onclick="clearSort()" style="background:none;border:none;
+                                color:var(--text-3);cursor:pointer;font-size:12px;padding:0 2px;"
+                                aria-label="Clear sort">
+                            <i class="ti ti-x" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                    <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+                        <span style="font-size:12px;color:var(--text-3);" id="result-count">—</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bulk action bar -->
+            <div class="card" id="bulk-bar" style="display:none;padding:10px 14px;
+                 align-items:center;justify-content:space-between;
+                 background:var(--indigo-light);border-color:rgba(99,102,241,0.25);">
+                <span style="font-size:12.5px;color:var(--indigo-text);font-weight:600;" id="bulk-count-label">0 selected</span>
+                <div style="display:flex;gap:8px;">
+                    <button class="btn btn-secondary btn-sm" onclick="exportSelected()">
+                        <i class="ti ti-download" aria-hidden="true"></i> Export selected
+                    </button>
+                    <button class="btn btn-ghost btn-sm" onclick="clearSelection()">Clear</button>
+                </div>
+            </div>
+
+            <!-- Data table -->
+            <div class="card" style="padding:0;overflow:hidden;">
+                <div style="overflow-x:auto;overflow-y:auto;max-height:calc(100vh - 340px);">
+                    <table id="data-table" class="explorer-table">
+                        <thead id="table-head"></thead>
+                        <tbody id="table-body"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Pagination -->
+            <div style="display:flex;align-items:center;justify-content:space-between;
+                 padding:0 4px;" id="pagination-bar">
+                <span style="font-size:12.5px;color:var(--text-3);" id="page-info">—</span>
+                <div style="display:flex;align-items:center;gap:6px;" id="page-buttons"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- ── Column Filter Modal ── -->
+    <div id="filter-modal" style="display:none;position:fixed;inset:0;z-index:500;
+         background:rgba(0,0,0,0.45);backdrop-filter:blur(4px);
+         align-items:center;justify-content:center;">
+        <div style="background:var(--bg-card);border:1px solid var(--border);
+             border-radius:var(--radius-lg);padding:24px;width:420px;max-width:92vw;
+             box-shadow:var(--shadow-lg);animation:scaleIn 0.2s ease;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+                <div>
+                    <div style="font-size:14px;font-weight:700;color:var(--text);" id="filter-modal-title">Filter Column</div>
+                    <div style="font-size:12px;color:var(--text-3);margin-top:2px;" id="filter-modal-sub">—</div>
+                </div>
+                <button onclick="closeFilterModal()" style="background:none;border:none;
+                        color:var(--text-3);cursor:pointer;font-size:18px;padding:4px;">
+                    <i class="ti ti-x" aria-hidden="true"></i>
+                </button>
+            </div>
+            <div id="filter-modal-body"></div>
+            <div style="display:flex;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid var(--border);">
+                <button class="btn btn-primary btn-sm" onclick="applyColumnFilter()" style="flex:1;">
+                    <i class="ti ti-filter" aria-hidden="true"></i> Apply Filter
+                </button>
+                <button class="btn btn-ghost btn-sm" onclick="clearColumnFilter()">Clear</button>
+                <button class="btn btn-secondary btn-sm" onclick="closeFilterModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ── Styles ── -->
+<style>
+.explorer-feature-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px; background: var(--bg-card);
+    border: 1px solid var(--border); border-radius: 50px;
+    font-size: 12.5px; color: var(--text-2); font-weight: 500;
+}
+.meta-divider { width: 1px; height: 28px; background: var(--border); flex-shrink: 0; }
+.meta-stat { display: flex; align-items: baseline; gap: 4px; }
+.meta-stat-val { font-size: 15px; font-weight: 700; color: var(--text); }
+.meta-stat-lbl { font-size: 11.5px; color: var(--text-3); }
+.col-list-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 14px; cursor: pointer;
+    border-bottom: 1px solid var(--border); transition: background 0.15s;
+}
+.col-list-item:last-child { border-bottom: none; }
+.col-list-item:hover { background: var(--bg-hover); }
+.col-list-item.active { background: var(--indigo-dim); }
+.col-type-badge {
+    font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.04em; padding: 2px 6px; border-radius: 4px; flex-shrink: 0;
+}
+.col-type-num    { background: var(--cyan-dim);    color: var(--cyan); }
+.col-type-text   { background: var(--amber-light); color: var(--amber-text); }
+.col-type-bool   { background: var(--green-light); color: var(--green-text); }
+.col-type-date   { background: var(--purple-light);color: var(--purple-text); }
+.col-type-other  { background: var(--bg-hover);    color: var(--text-3); }
+.col-list-name {
+    flex: 1; font-size: 12.5px; font-weight: 500; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.col-list-actions { display: flex; gap: 3px; opacity: 0; transition: opacity 0.15s; }
+.col-list-item:hover .col-list-actions { opacity: 1; }
+.col-action-btn {
+    background: none; border: none; cursor: pointer; color: var(--text-3);
+    font-size: 13px; padding: 2px 4px; border-radius: 4px; transition: all 0.15s;
+    display: flex; align-items: center;
+}
+.col-action-btn:hover { background: var(--bg-hover); color: var(--text); }
+.explorer-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.explorer-table thead { position: sticky; top: 0; z-index: 10; }
+.explorer-table th {
+    background: var(--bg-2); padding: 10px 14px; text-align: left;
+    font-weight: 600; color: var(--text-2); font-size: 11.5px;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--border); white-space: nowrap;
+    cursor: pointer; user-select: none; transition: background 0.15s;
+}
+.explorer-table th:hover { background: var(--bg-hover); }
+.explorer-table th.sorted-asc::after  { content: ' ↑'; color: var(--indigo); }
+.explorer-table th.sorted-desc::after { content: ' ↓'; color: var(--indigo); }
+.explorer-table td {
+    padding: 9px 14px; border-bottom: 1px solid var(--border);
+    color: var(--text-2); max-width: 260px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.explorer-table tr:last-child td { border-bottom: none; }
+.explorer-table tbody tr { transition: background 0.12s; }
+.explorer-table tbody tr:hover { background: var(--bg-hover); }
+.explorer-table tbody tr:hover td { color: var(--text); }
+.cell-null { color: var(--text-4) !important; font-style: italic; font-size: 11.5px; }
+.cell-num  { font-family: 'Space Grotesk', monospace; color: var(--cyan) !important; }
+.cell-true  { color: var(--green-text) !important; font-weight: 600; }
+.cell-false { color: var(--red-text)   !important; font-weight: 600; }
+.row-num-cell {
+    color: var(--text-4) !important; font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    min-width: 40px; width: 40px; text-align: right;
+    padding-right: 10px !important; user-select: none;
+}
+.filter-chip {
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 10px;
+    background: var(--indigo-dim); border: 1px solid rgba(99,102,241,0.25);
+    border-radius: 6px; font-size: 11.5px; color: var(--indigo);
+}
+.filter-chip button { background: none; border: none; cursor: pointer; color: var(--indigo); font-size: 12px; padding: 0; line-height: 1; }
+.col-vis-item {
+    display: flex; align-items: center; gap: 8px; padding: 7px 14px;
+    cursor: pointer; font-size: 12.5px; color: var(--text-2); transition: background 0.12s;
+}
+.col-vis-item:hover { background: var(--bg-hover); }
+.stat-row { display: flex; align-items: center; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+.stat-row:last-child { border-bottom: none; }
+.stat-row-lbl { color: var(--text-3); }
+.stat-row-val { font-weight: 600; color: var(--text); font-family: 'Space Grotesk', monospace; }
+.mini-bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.mini-bar-label { font-size: 11.5px; color: var(--text-2); min-width: 70px; max-width: 70px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mini-bar-track { flex: 1; height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; }
+.mini-bar-fill  { height: 100%; border-radius: 3px; background: var(--indigo); transition: width 0.5s ease; }
+.mini-bar-count { font-size: 10.5px; color: var(--text-3); min-width: 24px; text-align: right; }
+.page-btn {
+    width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--border); background: var(--bg-card); border-radius: var(--radius-sm);
+    font-size: 12.5px; color: var(--text-2); cursor: pointer; transition: all 0.15s;
+    font-family: 'Space Grotesk', sans-serif; font-weight: 600;
+}
+.page-btn:hover  { background: var(--bg-hover); border-color: var(--border-hover); }
+.page-btn.active { background: var(--indigo); border-color: var(--indigo); color: #fff; }
+.page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* AI banner chip */
+.ai-banner-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px 10px; border-radius: 20px;
+    background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.2);
+    color: var(--indigo, #6366F1); font-size: 11.5px; font-weight: 600;
+    cursor: pointer; transition: all 0.15s; text-decoration: none; white-space: nowrap;
+}
+.ai-banner-chip:hover { background: rgba(99,102,241,0.18); }
+.ai-banner-chip.amber { background:rgba(245,158,11,0.1); border-color:rgba(245,158,11,0.2); color:var(--amber-text); }
+.ai-banner-chip.red   { background:rgba(239,68,68,0.1);  border-color:rgba(239,68,68,0.2);  color:var(--red-text); }
+
+@keyframes pulse-ring {
+    0%   { box-shadow: 0 0 0 0 rgba(99,102,241,0.4); }
+    70%  { box-shadow: 0 0 0 14px rgba(99,102,241,0); }
+    100% { box-shadow: 0 0 0 0 rgba(99,102,241,0); }
+}
+@keyframes scaleIn { from { transform: scale(0.94); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+:root { --indigo-dim: rgba(99,102,241,0.10); --cyan-dim: rgba(6,182,212,0.10); }
+
+@media (max-width:900px) {
+    #explorer-ui > div { grid-template-columns: 1fr !important; }
+    #col-stats-panel, #filters-card { position: static !important; }
+    #ai-context-banner { display: none !important; }
+}
+</style>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+requireAuth();
+
+/* ═══════════════════════════════════════════════════════
+   STATE
+═══════════════════════════════════════════════════════ */
+let rawData        = [];
+let allColumns     = [];
+let visibleCols    = new Set();
+let hiddenCols     = new Set();
+let colFilters     = {};
+let sortCol        = null;
+let sortDir        = 'asc';
+let currentPage    = 1;
+let pageSize       = 50;
+let filteredData   = [];
+let currentFile    = null;
+let activeColStats = null;
+let filterTargetCol = null;
+let savedViews     = {};
+let selectedRows   = new Set();
+
+/* ═══════════════════════════════════════════════════════
+   INIT
+═══════════════════════════════════════════════════════ */
+window.onload = async () => {
+    await loadFileSelector();
+    const params    = new URLSearchParams(window.location.search);
+    const fileParam = params.get('file') || localStorage.getItem('active_file');
+    if (fileParam) {
+        const sel = document.getElementById('topbar-file-select');
+        sel.value = fileParam;
+        if (sel.value) { currentFile = fileParam; await loadDataset(fileParam); }
+    }
+};
+
+/* ═══════════════════════════════════════════════════════
+   FILE SELECTOR
+═══════════════════════════════════════════════════════ */
+async function loadFileSelector() {
+    const res = await apiFetch('/files/list');
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    const sel  = document.getElementById('topbar-file-select');
+    if (!data.files.length) { sel.innerHTML = '<option value="">No datasets — upload one first</option>'; return; }
+    sel.innerHTML = '<option value="">Select a dataset...</option>' +
+        data.files.map(f => `<option value="${f.filename}">${f.filename} (${fmtSize(f.size_kb)})</option>`).join('');
+}
+
+function onFileChange() {
+    const val = document.getElementById('topbar-file-select').value;
+    if (!val) {
+        currentFile = null; showWelcome();
+        document.getElementById('export-btn').disabled      = true;
+        document.getElementById('investigate-btn').disabled = true;
+        document.getElementById('ai-context-banner').style.display = 'none';
+        return;
+    }
+    currentFile = val;
+    localStorage.setItem('active_file', val);
+    loadDataset(val);
+}
+
+/* ═══════════════════════════════════════════════════════
+   LOAD DATASET
+═══════════════════════════════════════════════════════ */
+async function loadDataset(filename) {
+    showLoading('Reading file structure...');
+    resetState();
+    document.getElementById('ai-context-banner').style.display = 'none';
+
+    try {
+        let res = await apiFetch(`/files/preview/${encodeURIComponent(filename)}?limit=2000`);
+
+        if (!res || !res.ok) {
+            res = await apiFetch(`/files/profile/${encodeURIComponent(filename)}`);
+            if (!res || !res.ok) { showWelcome(); showToast('Could not load dataset', 'error'); return; }
+            const profile = await res.json();
+            rawData    = [];
+            allColumns = (profile.columns || []).map(c => ({ name: c.name || c, type: c.type || 'object' }));
+            buildExplorerFromProfile(profile);
+            renderAIContextBanner(null, profile);
+            return;
+        }
+
+        document.getElementById('loading-msg').textContent = 'Parsing rows...';
+        const result = await res.json();
+
+        if (Array.isArray(result)) {
+            rawData    = result;
+            allColumns = result.length > 0
+                ? Object.keys(result[0]).map(k => ({ name: k, type: inferType(result, k) }))
+                : [];
+        } else {
+            rawData    = result.rows || result.data || [];
+            allColumns = result.columns
+                ? result.columns.map(c => typeof c === 'string'
+                    ? { name: c, type: inferType(rawData, c) }
+                    : { name: c.name, type: c.type || inferType(rawData, c.name) })
+                : Object.keys(rawData[0] || {}).map(k => ({ name: k, type: inferType(rawData, k) }));
+        }
+
+        rawData.forEach((r, i) => { r.__rid = i; });
+        selectedRows = new Set();
+
+        document.getElementById('loading-msg').textContent = 'Building table...';
+        await new Promise(r => setTimeout(r, 50));
+        initExplorer(filename, result);
+
+        // Fire AI context banner (async, non-blocking)
+        fetchAndRenderAIBanner(filename, result);
+
+    } catch(e) {
+        showWelcome();
+        showToast('Failed to load dataset: ' + e.message, 'error');
+    }
+}
+
+/* ═══════════════════════════════════════════════════════
+   AI CONTEXT BANNER
+   Fetches /overview data and builds a contextual insight
+   about what the user is currently looking at.
+═══════════════════════════════════════════════════════ */
+async function fetchAndRenderAIBanner(filename, result) {
+    try {
+        const res = await apiFetch(`/api/insights/overview/${encodeURIComponent(filename)}`);
+        if (res && res.ok) {
+            const overview = await res.json();
+            renderAIContextBanner(overview, result);
+        } else {
+            renderAIContextBanner(null, result);
+        }
+    } catch(e) {
+        renderAIContextBanner(null, result);
+    }
+}
+
+function renderAIContextBanner(overview, result) {
+    const banner = document.getElementById('ai-context-banner');
+    const text   = document.getElementById('ai-context-text');
+    const chips  = document.getElementById('ai-context-chips');
+
+    const rows     = overview ? overview.rows     : (rawData.length || 0);
+    const cols     = overview ? overview.columns  : allColumns.length;
+    const missing  = overview ? overview.missing_total : 0;
+    const dupes    = overview ? overview.duplicate_rows : 0;
+    const complete = overview ? overview.completeness : 100;
+    const numCount = overview ? overview.numeric_count : allColumns.filter(c => isNumericType(c.type)).length;
+    const catCount = overview ? overview.categorical_count : allColumns.filter(c => !isNumericType(c.type)).length;
+    const hasDate  = overview ? overview.has_date_col : false;
+
+    // Build the contextual message
+    let msg = '';
+    const issues = [];
+
+    if (missing > 0)  issues.push(`<strong>${missing.toLocaleString()}</strong> null values`);
+    if (dupes > 0)    issues.push(`<strong>${dupes}</strong> duplicate rows`);
+
+    if (issues.length > 0) {
+        const completePct = complete.toFixed(0);
+        msg = `Viewing <strong>${rows.toLocaleString()}</strong> rows × <strong>${cols}</strong> columns — ${completePct}% complete. Watch for ${issues.join(' and ')} when filtering.`;
+    } else if (numCount >= 2 && catCount >= 1) {
+        msg = `<strong>${rows.toLocaleString()}</strong> rows, <strong>${numCount}</strong> numeric and <strong>${catCount}</strong> categorical columns. Clean dataset — good for sorting by numeric columns to spot top and bottom performers.`;
+    } else if (hasDate) {
+        msg = `<strong>${rows.toLocaleString()}</strong> rows with a time dimension detected. Sort by date to explore chronological patterns, or filter to a specific period.`;
+    } else {
+        msg = `<strong>${rows.toLocaleString()}</strong> rows across <strong>${cols}</strong> columns loaded. Click any column header to sort, or use the filter icon on the left to narrow down.`;
+    }
+
+    text.innerHTML = msg;
+
+    // Build contextual action chips
+    const chipItems = [];
+    if (dupes > 0 || missing > 0) {
+        chipItems.push({
+            label: 'Investigate data quality',
+            cls:   'amber',
+            action: () => { localStorage.setItem('prefill_question', 'What are the main data quality issues and how do they affect analysis?'); localStorage.setItem('active_file', currentFile); window.location.href = '/chat'; }
+        });
+    }
+    if (numCount >= 2) {
+        chipItems.push({
+            label: 'Find correlations',
+            cls:   '',
+            action: () => { window.location.href = '/insights'; }
+        });
+    }
+    chipItems.push({
+        label: '⚡ Investigate',
+        cls:   '',
+        action: () => investigateDataset()
+    });
+
+    chips.innerHTML = chipItems.map((c, i) => `
+        <button class="ai-banner-chip ${c.cls}" id="ai-chip-${i}">
+            ${c.label}
+        </button>`).join('');
+
+    // Bind actions after DOM insert
+    chipItems.forEach((c, i) => {
+        const el = document.getElementById(`ai-chip-${i}`);
+        if (el) el.onclick = c.action;
+    });
+
+    banner.style.display = 'block';
+}
+
+function dismissAIBanner() {
+    document.getElementById('ai-context-banner').style.display = 'none';
+}
+
+/* ═══════════════════════════════════════════════════════
+   INIT EXPLORER
+═══════════════════════════════════════════════════════ */
+function initExplorer(filename, result) {
+    visibleCols  = new Set(allColumns.map(c => c.name));
+    hiddenCols   = new Set();
+    filteredData = [...rawData];
+
+    const totalRows = result.total_rows || rawData.length;
+    document.getElementById('meta-filename').textContent = filename;
+    document.getElementById('meta-sub').textContent =
+        `${fmtNum(allColumns.length)} columns · ${fmtNum(totalRows)} total rows`;
+    document.getElementById('meta-rows').textContent = fmtNum(rawData.length);
+    document.getElementById('meta-cols').textContent  = allColumns.length;
+
+    const issues = result.issues || [];
+    if (issues.length > 0) {
+        document.getElementById('meta-issues-badge').style.display  = 'inline-flex';
+        document.getElementById('meta-issues-count').textContent    = issues.length;
+        document.getElementById('meta-quality-badge').style.display = 'none';
+    } else {
+        document.getElementById('meta-quality-badge').style.display = 'inline-flex';
+        document.getElementById('meta-issues-badge').style.display  = 'none';
+    }
+
+  document.getElementById('col-count-badge').textContent = allColumns.length;
+    renderColumnList();
+    buildColVisibilityMenu();
+    loadSavedViews();
+    applyFilters();
+    document.getElementById('export-btn').disabled      = false;
+    document.getElementById('investigate-btn').disabled = false;
+    showExplorer();
+}
+
+function buildExplorerFromProfile(profile) {
+    document.getElementById('meta-filename').textContent = profile.filename;
+    document.getElementById('meta-sub').textContent      =
+        `${profile.total_columns} columns · ${fmtNum(profile.total_rows)} rows (profile only)`;
+    document.getElementById('meta-rows').textContent = fmtNum(profile.total_rows);
+    document.getElementById('meta-cols').textContent  = profile.total_columns;
+    document.getElementById('meta-quality-badge').style.display = 'inline-flex';
+    document.getElementById('col-count-badge').textContent = allColumns.length;
+    renderColumnList();
+    buildColVisibilityMenu();
+    loadSavedViews();
+    applyFilters();
+    showExplorer();
+}
+
+/* ═══════════════════════════════════════════════════════
+   COLUMN LIST
+═══════════════════════════════════════════════════════ */
+function renderColumnList() {
+    const wrap = document.getElementById('column-list');
+    wrap.innerHTML = allColumns.map(col => {
+        const hasFilter = !!colFilters[col.name];
+        const isActive  = activeColStats === col.name;
+        return `
+        <div class="col-list-item ${isActive ? 'active' : ''}" id="cli-${esc(col.name)}"
+             onclick="showColStats('${esc(col.name)}')">
+            <span class="col-type-badge ${typeClass(col.type)}">${shortType(col.type)}</span>
+            <span class="col-list-name" title="${esc(col.name)}">${esc(col.name)}</span>
+            ${hasFilter ? `<i class="ti ti-filter" style="font-size:11px;color:var(--indigo);flex-shrink:0;" aria-hidden="true"></i>` : ''}
+            <div class="col-list-actions">
+                <button class="col-action-btn" title="Filter"
+                        onclick="event.stopPropagation();openFilterModal('${esc(col.name)}')">
+                    <i class="ti ti-filter" aria-hidden="true"></i>
+                </button>
+                <button class="col-action-btn" title="Sort A→Z"
+                        onclick="event.stopPropagation();setSort('${esc(col.name)}','asc')">
+                    <i class="ti ti-sort-ascending" aria-hidden="true"></i>
+                </button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+/* ═══════════════════════════════════════════════════════
+   COLUMN STATS
+═══════════════════════════════════════════════════════ */
+function showColStats(colName) {
+    activeColStats = colName;
+    renderColumnList();
+    const col  = allColumns.find(c => c.name === colName);
+    const vals = rawData.map(r => r[colName]);
+    const nonNull = vals.filter(v => v !== null && v !== undefined && v !== '');
+    const panel = document.getElementById('col-stats-panel');
+    const body  = document.getElementById('col-stats-body');
+    panel.style.display = 'block';
+    const isNum = col && isNumericType(col.type);
+    let statsHTML = '';
+    if (isNum) {
+        const nums   = nonNull.map(Number).filter(n => !isNaN(n));
+        const min    = nums.length ? Math.min(...nums) : '—';
+        const max    = nums.length ? Math.max(...nums) : '—';
+        const mean   = nums.length ? nums.reduce((a,b)=>a+b,0)/nums.length : '—';
+        const sorted = [...nums].sort((a,b)=>a-b);
+        const median = nums.length ? sorted[Math.floor(sorted.length/2)] : '—';
+        statsHTML = `
+            <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:10px;
+                 overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(colName)}">${esc(colName)}</div>
+            <div class="stat-row"><span class="stat-row-lbl">Type</span><span class="stat-row-val" style="color:var(--cyan);">${col.type}</span></div>
+            <div class="stat-row"><span class="stat-row-lbl">Count</span><span class="stat-row-val">${fmtNum(nonNull.length)}</span></div>
+            <div class="stat-row"><span class="stat-row-lbl">Nulls</span><span class="stat-row-val" style="color:${vals.length-nonNull.length>0?'var(--red-text)':'var(--green-text)'};">${fmtNum(vals.length-nonNull.length)}</span></div>
+            <div class="stat-row"><span class="stat-row-lbl">Min</span><span class="stat-row-val">${fmtVal(min)}</span></div>
+            <div class="stat-row"><span class="stat-row-lbl">Max</span><span class="stat-row-val">${fmtVal(max)}</span></div>
+            <div class="stat-row"><span class="stat-row-lbl">Mean</span><span class="stat-row-val">${typeof mean==='number'?mean.toFixed(2):'—'}</span></div>
+            <div class="stat-row"><span class="stat-row-lbl">Median</span><span class="stat-row-val">${fmtVal(median)}</span></div>
+            <div style="margin-top:12px;">
+                <button class="btn btn-secondary btn-sm w-full" style="justify-content:center;font-size:11.5px;"
+                        onclick="openFilterModal('${esc(colName)}')">
+                    <i class="ti ti-filter" aria-hidden="true"></i> Filter this column
+                </button>
+            </div>`;
+    } else {
+        const counts = {};
+        nonNull.forEach(v => { const s=String(v); counts[s]=(counts[s]||0)+1; });
+        const top      = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,8);
+        const maxCount = top[0]?.[1]||1;
+        const barsHTML = top.map(([val,cnt]) => `
+            <div class="mini-bar-row">
+                <div class="mini-bar-label" title="${esc(val)}">${esc(val)}</div>
+                <div class="mini-bar-track"><div class="mini-bar-fill" style="width:${Math.round((cnt/maxCount)*100)}%;"></div></div>
+                <div class="mini-bar-count">${cnt}</div>
+            </div>`).join('');
+        statsHTML = `
+            <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:10px;
+                 overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(colName)}">${esc(colName)}</div>
+            <div class="stat-row"><span class="stat-row-lbl">Type</span><span class="stat-row-val" style="color:var(--amber-text);">${col?col.type:'—'}</span></div>
+            <div class="stat-row"><span class="stat-row-lbl">Count</span><span class="stat-row-val">${fmtNum(nonNull.length)}</span></div>
+            <div class="stat-row"><span class="stat-row-lbl">Nulls</span><span class="stat-row-val" style="color:${vals.length-nonNull.length>0?'var(--red-text)':'var(--green-text)'};">${fmtNum(vals.length-nonNull.length)}</span></div>
+            <div class="stat-row" style="margin-bottom:10px;"><span class="stat-row-lbl">Unique</span><span class="stat-row-val">${fmtNum(Object.keys(counts).length)}</span></div>
+            <div style="font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">Top Values</div>
+            ${barsHTML}
+            <div style="margin-top:12px;">
+                <button class="btn btn-secondary btn-sm w-full" style="justify-content:center;font-size:11.5px;"
+                        onclick="openFilterModal('${esc(colName)}')">
+                    <i class="ti ti-filter" aria-hidden="true"></i> Filter this column
+                </button>
+            </div>`;
+    }
+    body.innerHTML = statsHTML;
+}
+
+function closeColStats() {
+    activeColStats = null;
+    document.getElementById('col-stats-panel').style.display = 'none';
+    renderColumnList();
+}
+
+/* ═══════════════════════════════════════════════════════
+   FILTER MODAL
+═══════════════════════════════════════════════════════ */
+function openFilterModal(colName) {
+    filterTargetCol = colName;
+    const col      = allColumns.find(c => c.name === colName);
+    const existing = colFilters[colName];
+    document.getElementById('filter-modal-title').textContent = `Filter: ${colName}`;
+    document.getElementById('filter-modal-sub').textContent   = `Type: ${col?col.type:'—'}`;
+    const isNum = col && isNumericType(col.type);
+    let bodyHTML = '';
+    if (isNum) {
+        const vals      = rawData.map(r=>r[colName]).filter(v=>v!==null&&v!==undefined&&v!=='').map(Number).filter(n=>!isNaN(n));
+        const globalMin = vals.length?Math.min(...vals):0;
+        const globalMax = vals.length?Math.max(...vals):100;
+        const curMin    = existing?.min??globalMin;
+        const curMax    = existing?.max??globalMax;
+        bodyHTML = `
+            <div style="font-size:12.5px;color:var(--text-3);margin-bottom:14px;">Filter rows where <strong style="color:var(--text);">${esc(colName)}</strong> is between:</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div><div style="font-size:11px;color:var(--text-3);margin-bottom:5px;font-weight:600;">Min value</div><input id="fm-min" type="number" class="form-input" value="${curMin}" step="any" placeholder="${globalMin}" /></div>
+                <div><div style="font-size:11px;color:var(--text-3);margin-bottom:5px;font-weight:600;">Max value</div><input id="fm-max" type="number" class="form-input" value="${curMax}" step="any" placeholder="${globalMax}" /></div>
+            </div>
+            <div style="font-size:11.5px;color:var(--text-3);margin-top:10px;">Range: <strong>${fmtVal(globalMin)}</strong> → <strong>${fmtVal(globalMax)}</strong></div>`;
+    } else {
+        const vals     = rawData.map(r=>r[colName]);
+        const counts   = {};
+        vals.forEach(v=>{const s=String(v??'');counts[s]=(counts[s]||0)+1;});
+        const uniques  = Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+        const selected = existing?.values?new Set(existing.values):null;
+        const showSearch = uniques.length > 10;
+        bodyHTML = `
+            ${showSearch?`<div style="position:relative;margin-bottom:10px;"><i class="ti ti-search" style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--text-3);font-size:12px;pointer-events:none;" aria-hidden="true"></i><input id="fm-search" type="text" class="form-input" placeholder="Search values..." style="padding-left:28px;font-size:12px;" oninput="filterValueList()" /></div>`:''}
+            <div style="font-size:11.5px;color:var(--text-3);margin-bottom:8px;">Select values to <strong>include</strong> (<span id="fm-sel-count">${selected?selected.size:uniques.length}</span> selected):</div>
+            <div id="fm-value-list" style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);padding:4px 0;">
+                ${uniques.map(([val,cnt])=>`<label style="display:flex;align-items:center;gap:8px;padding:5px 10px;cursor:pointer;transition:background 0.12s;" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''"><input type="checkbox" value="${esc(val)}" ${!selected||selected.has(val)?'checked':''} onchange="updateFmSelCount()" style="accent-color:var(--indigo);" /><span style="flex:1;font-size:12.5px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(val)}">${val===''?'<em style="color:var(--text-4);">(empty)</em>':esc(val)}</span><span style="font-size:11px;color:var(--text-3);">${cnt}</span></label>`).join('')}
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px;"><button class="btn btn-ghost btn-sm" style="font-size:11.5px;" onclick="checkAllValues(true)">Select all</button><button class="btn btn-ghost btn-sm" style="font-size:11.5px;" onclick="checkAllValues(false)">Deselect all</button></div>`;
+    }
+    document.getElementById('filter-modal-body').innerHTML = bodyHTML;
+    document.getElementById('filter-modal').style.display  = 'flex';
+}
+
+function updateFmSelCount() {
+    const boxes = document.querySelectorAll('#fm-value-list input[type=checkbox]');
+    const sel   = [...boxes].filter(b=>b.checked).length;
+    const el    = document.getElementById('fm-sel-count');
+    if (el) el.textContent = sel;
+}
+
+function checkAllValues(check) {
+    document.querySelectorAll('#fm-value-list input[type=checkbox]').forEach(b=>b.checked=check);
+    updateFmSelCount();
+}
+
+function filterValueList() {
+    const q = document.getElementById('fm-search').value.toLowerCase();
+    document.querySelectorAll('#fm-value-list label').forEach(label=>{
+        const txt = label.querySelector('span').textContent.toLowerCase();
+        label.style.display = txt.includes(q)?'':'none';
+    });
+}
+
+function applyColumnFilter() {
+    const col   = allColumns.find(c=>c.name===filterTargetCol);
+    const isNum = col && isNumericType(col.type);
+    if (isNum) {
+        const min = parseFloat(document.getElementById('fm-min').value);
+        const max = parseFloat(document.getElementById('fm-max').value);
+        if (!isNaN(min)||!isNaN(max)) colFilters[filterTargetCol]={type:'range',min,max};
+    } else {
+        const boxes   = document.querySelectorAll('#fm-value-list input[type=checkbox]');
+        const allVals = [...boxes].map(b=>b.value);
+        const selVals = [...boxes].filter(b=>b.checked).map(b=>b.value);
+        if (selVals.length<allVals.length) colFilters[filterTargetCol]={type:'values',values:selVals};
+        else delete colFilters[filterTargetCol];
+    }
+    closeFilterModal(); currentPage=1; applyFilters();
+}
+
+function clearColumnFilter()  { delete colFilters[filterTargetCol]; closeFilterModal(); applyFilters(); }
+function closeFilterModal()   { document.getElementById('filter-modal').style.display='none'; filterTargetCol=null; }
+
+document.getElementById('filter-modal').addEventListener('click',function(e){if(e.target===this)closeFilterModal();});
+
+function clearAllFilters() {
+    colFilters={};
+    document.getElementById('global-search').value='';
+    applyFilters();
+}
+
+/* ═══════════════════════════════════════════════════════
+   APPLY FILTERS + SORT
+═══════════════════════════════════════════════════════ */
+function applyFilters() {
+    const q = document.getElementById('global-search').value.toLowerCase().trim();
+    filteredData = rawData.filter(row=>{
+        if (q && !Object.values(row).some(v=>String(v??'').toLowerCase().includes(q))) return false;
+        for (const [col,filter] of Object.entries(colFilters)) {
+            const val = row[col];
+            if (filter.type==='range') { const num=Number(val); if(!isNaN(filter.min)&&num<filter.min)return false; if(!isNaN(filter.max)&&num>filter.max)return false; }
+            else if (filter.type==='values') { if(!filter.values.includes(String(val??'')))return false; }
+        }
+        return true;
+    });
+    if (sortCol) {
+        const col = allColumns.find(c=>c.name===sortCol);
+        const num = col&&isNumericType(col.type);
+        filteredData=[...filteredData].sort((a,b)=>{
+            const av=a[sortCol],bv=b[sortCol];
+            if(av===null||av===undefined)return 1;
+            if(bv===null||bv===undefined)return -1;
+            const cmp=num?Number(av)-Number(bv):String(av).localeCompare(String(bv));
+            return sortDir==='asc'?cmp:-cmp;
+        });
+    }
+    document.getElementById('meta-filtered').textContent = fmtNum(filteredData.length);
+    document.getElementById('meta-showing').textContent  = fmtNum(Math.min(pageSize,filteredData.length));
+    document.getElementById('result-count').textContent  = `${fmtNum(filteredData.length)} of ${fmtNum(rawData.length)} rows`;
+    renderActiveFilters(); renderColumnList(); currentPage=1; renderTable(); renderPagination();
+}
+
+function renderActiveFilters() {
+    const filterEntries = Object.entries(colFilters);
+    const card = document.getElementById('filters-card');
+    const list = document.getElementById('active-filters-list');
+    if (!filterEntries.length) { card.style.display='none'; return; }
+    card.style.display='block';
+    list.innerHTML=filterEntries.map(([col,f])=>{
+        let desc='';
+        if(f.type==='range')desc=`${fmtVal(f.min)} → ${fmtVal(f.max)}`;
+        else if(f.type==='values')desc=`${f.values.length} value${f.values.length>1?'s':''}`;
+        return `<div class="filter-chip"><i class="ti ti-filter" style="font-size:11px;" aria-hidden="true"></i><span style="font-weight:600;">${esc(col)}</span>: ${esc(desc)}<button onclick="removeFilter('${esc(col)}')" aria-label="Remove filter"><i class="ti ti-x" aria-hidden="true"></i></button></div>`;
+    }).join('');
+}
+
+function removeFilter(col) { delete colFilters[col]; applyFilters(); }
+
+/* ═══════════════════════════════════════════════════════
+   TABLE RENDER
+═══════════════════════════════════════════════════════ */
+function renderTable() {
+    const start = (currentPage-1)*pageSize;
+    const slice = filteredData.slice(start,start+pageSize);
+    const cols  = allColumns.filter(c=>!hiddenCols.has(c.name));
+    const head  = document.getElementById('table-head');
+
+    const allOnPageSelected = slice.length > 0 && slice.every(r => selectedRows.has(r.__rid));
+
+    head.innerHTML=`<tr>
+        <th style="width:32px;cursor:default;">
+            <input type="checkbox" ${allOnPageSelected ? 'checked' : ''} onchange="toggleSelectPage(this.checked)" style="accent-color:var(--indigo);" />
+        </th>
+        <th class="row-num-cell" style="cursor:default;">#</th>
+        ${cols.map(col=>{const isSorted=sortCol===col.name;const cls=isSorted?(sortDir==='asc'?'sorted-asc':'sorted-desc'):'';return`<th class="${cls}" onclick="toggleSort('${esc(col.name)}')" title="Sort by ${esc(col.name)}">${esc(col.name)}</th>`;}).join('')}
+    </tr>`;
+
+    const body=document.getElementById('table-body');
+    if(!slice.length){
+        body.innerHTML=`<tr><td colspan="${cols.length+2}" style="text-align:center;padding:48px;color:var(--text-3);font-size:13px;">No rows match the current filters.</td></tr>`;
+        document.getElementById('meta-showing').textContent='0';
+        updateBulkBar();
+        return;
+    }
+
+    body.innerHTML=slice.map((row,i)=>{
+        const checked = selectedRows.has(row.__rid) ? 'checked' : '';
+        return `<tr>
+            <td style="width:32px;"><input type="checkbox" ${checked} onchange="toggleRowSelect(${row.__rid}, this.checked)" style="accent-color:var(--indigo);" /></td>
+            <td class="row-num-cell">${fmtNum(start+i+1)}</td>
+            ${cols.map(col=>`<td>${cellHTML(row[col.name],col)}</td>`).join('')}
+        </tr>`;
+    }).join('');
+
+    document.getElementById('meta-showing').textContent=fmtNum(slice.length);
+    updateBulkBar();
+}
+
+function cellHTML(val,col) {
+    if(val===null||val===undefined||val==='')return`<span class="cell-null">null</span>`;
+    if(typeof val==='boolean'||val==='True'||val==='False'||val==='true'||val==='false'){const t=val===true||val==='True'||val==='true';return`<span class="${t?'cell-true':'cell-false'}">${t?'✓ true':'✗ false'}</span>`;}
+    if(col&&isNumericType(col.type))return`<span class="cell-num">${fmtVal(val)}</span>`;
+    const str=String(val);return esc(str.length>120?str.slice(0,120)+'…':str);
+}
+
+/* ═══════════════════════════════════════════════════════
+   PAGINATION
+═══════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════
+   BULK SELECTION
+═══════════════════════════════════════════════════════ */
+function toggleRowSelect(rid, checked) {
+    if (checked) selectedRows.add(rid); else selectedRows.delete(rid);
+    renderTable();
+}
+
+function toggleSelectPage(checked) {
+    const start = (currentPage-1)*pageSize;
+    const slice = filteredData.slice(start,start+pageSize);
+    slice.forEach(r => checked ? selectedRows.add(r.__rid) : selectedRows.delete(r.__rid));
+    renderTable();
+}
+
+function clearSelection() {
+    selectedRows.clear();
+    renderTable();
+}
+
+function updateBulkBar() {
+    const bar = document.getElementById('bulk-bar');
+    if (selectedRows.size > 0) {
+        bar.style.display = 'flex';
+        document.getElementById('bulk-count-label').textContent = `${selectedRows.size} row${selectedRows.size>1?'s':''} selected`;
+    } else {
+        bar.style.display = 'none';
+    }
+}
+
+function exportSelected() {
+    if (!selectedRows.size) { showToast('No rows selected','warning'); return; }
+    const cols = allColumns.filter(c=>!hiddenCols.has(c.name)).map(c=>c.name);
+    const rows = rawData.filter(r => selectedRows.has(r.__rid));
+    const csvRows = [cols.join(','), ...rows.map(row=>cols.map(c=>{
+        const v=row[c]; if(v===null||v===undefined)return'';
+        const s=String(v);
+        return s.includes(',')||s.includes('"')||s.includes('\n')?`"${s.replace(/"/g,'""')}"`:s;
+    }).join(','))];
+    const blob = new Blob([csvRows.join('\n')], {type:'text/csv'});
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = (currentFile||'export').replace(/\.[^.]+$/,'')+'_selected.csv'; a.click();
+    URL.revokeObjectURL(url);
+    showToast(`Exported ${selectedRows.size} selected rows`, 'success');
+}
+
+/* ═══════════════════════════════════════════════════════
+   SAVED VIEWS (localStorage, scoped per dataset)
+═══════════════════════════════════════════════════════ */
+function viewsStorageKey() {
+    return `abip_views_${currentFile}`;
+}
+
+function loadSavedViews() {
+    try {
+        savedViews = JSON.parse(localStorage.getItem(viewsStorageKey()) || '{}');
+    } catch(e) {
+        savedViews = {};
+    }
+    renderViewsMenu();
+}
+
+function persistSavedViews() {
+    localStorage.setItem(viewsStorageKey(), JSON.stringify(savedViews));
+}
+
+function captureCurrentView() {
+    return {
+        colFilters:  JSON.parse(JSON.stringify(colFilters)),
+        sortCol,
+        sortDir,
+        hiddenCols:  [...hiddenCols],
+        search:      document.getElementById('global-search').value,
+        pageSize,
+    };
+}
+
+function applyView(name) {
+    const v = savedViews[name];
+    if (!v) return;
+    colFilters  = JSON.parse(JSON.stringify(v.colFilters || {}));
+    sortCol     = v.sortCol || null;
+    sortDir     = v.sortDir || 'asc';
+    hiddenCols  = new Set(v.hiddenCols || []);
+    pageSize    = v.pageSize || 50;
+
+    document.getElementById('global-search').value = v.search || '';
+    document.getElementById('page-size-select').value = String(pageSize);
+
+    const indicator = document.getElementById('sort-indicator');
+    if (sortCol) {
+        indicator.style.display = 'flex';
+        document.getElementById('sort-label').textContent = `${sortCol} (${sortDir==='asc'?'A→Z':'Z→A'})`;
+    } else {
+        indicator.style.display = 'none';
+    }
+
+    buildColVisibilityMenu();
+    updateHiddenBadge();
+    currentPage = 1;
+    applyFilters();
+    toggleViewsMenu();
+    showToast(`View "${name}" applied`, 'success');
+}
+
+function saveCurrentView() {
+    const name = prompt('Name this view (e.g. "High value, missing emails"):');
+    if (!name || !name.trim()) return;
+    savedViews[name.trim()] = captureCurrentView();
+    persistSavedViews();
+    renderViewsMenu();
+    showToast(`View "${name.trim()}" saved`, 'success');
+}
+
+function deleteView(name) {
+    delete savedViews[name];
+    persistSavedViews();
+    renderViewsMenu();
+}
+
+function renderViewsMenu() {
+    const menu = document.getElementById('views-menu');
+    const names = Object.keys(savedViews);
+    menu.innerHTML = `
+        <div style="padding:6px 14px;border-bottom:1px solid var(--border);margin-bottom:4px;">
+            <button class="btn btn-primary btn-sm w-full" style="justify-content:center;font-size:11.5px;"
+                    onclick="saveCurrentView()">
+                <i class="ti ti-device-floppy" aria-hidden="true"></i> Save current view
+            </button>
+        </div>
+        ${names.length ? names.map(n => `
+            <div class="col-vis-item" style="justify-content:space-between;">
+                <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;"
+                      onclick="applyView('${esc(n)}')" title="${esc(n)}">
+                    <i class="ti ti-bookmark" style="font-size:12px;margin-right:6px;color:var(--indigo);" aria-hidden="true"></i>${esc(n)}
+                </span>
+                <button class="col-action-btn" title="Delete view" onclick="event.stopPropagation();deleteView('${esc(n)}')">
+                    <i class="ti ti-trash" aria-hidden="true"></i>
+                </button>
+            </div>`).join('')
+          : `<div style="padding:10px 14px;font-size:12px;color:var(--text-3);">No saved views yet</div>`}
+    `;
+}
+
+function toggleViewsMenu() {
+    const menu = document.getElementById('views-menu');
+    menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+}
+document.addEventListener('click', e => {
+    const btn  = document.getElementById('views-toggle-btn');
+    const menu = document.getElementById('views-menu');
+    if (btn && !btn.contains(e.target) && menu && !menu.contains(e.target)) menu.style.display = 'none';
+});
+
+/* ═══════════════════════════════════════════════════════
+   ASK AI
+═══════════════════════════════════════════════════════ */
+function askAI() {
+    const q = document.getElementById('ai-ask-input').value.trim();
+    if (!q) return;
+    if (!currentFile) { showToast('Select a dataset first','warning'); return; }
+    localStorage.setItem('prefill_question', q);
+    localStorage.setItem('active_file', currentFile);
+    window.location.href = '/chat';
+}
+function renderPagination() {
+    const total=filteredData.length,pages=Math.ceil(total/pageSize);
+    const start=(currentPage-1)*pageSize+1,end=Math.min(currentPage*pageSize,total);
+    document.getElementById('page-info').textContent=total===0?'No results':`Showing ${fmtNum(start)}–${fmtNum(end)} of ${fmtNum(total)}`;
+    const btns=document.getElementById('page-buttons');
+    if(pages<=1){btns.innerHTML='';return;}
+    let pageNums=[];
+    if(pages<=7)pageNums=Array.from({length:pages},(_,i)=>i+1);
+    else{pageNums=[1];if(currentPage>3)pageNums.push('…');for(let p=Math.max(2,currentPage-1);p<=Math.min(pages-1,currentPage+1);p++)pageNums.push(p);if(currentPage<pages-2)pageNums.push('…');pageNums.push(pages);}
+    btns.innerHTML=`<button class="page-btn" ${currentPage===1?'disabled':''} onclick="goPage(${currentPage-1})"><i class="ti ti-chevron-left" aria-hidden="true"></i></button>${pageNums.map(p=>p==='…'?`<span style="padding:0 4px;color:var(--text-3);font-size:13px;">…</span>`:`<button class="page-btn ${p===currentPage?'active':''}" onclick="goPage(${p})">${p}</button>`).join('')}<button class="page-btn" ${currentPage===pages?'disabled':''} onclick="goPage(${currentPage+1})"><i class="ti ti-chevron-right" aria-hidden="true"></i></button>`;
+}
+
+function goPage(p){const pages=Math.ceil(filteredData.length/pageSize);if(p<1||p>pages)return;currentPage=p;renderTable();renderPagination();document.getElementById('data-table').scrollIntoView({behavior:'smooth',block:'start'});}
+function onPageSizeChange(){pageSize=parseInt(document.getElementById('page-size-select').value);currentPage=1;renderTable();renderPagination();}
+
+/* ═══════════════════════════════════════════════════════
+   SORT
+═══════════════════════════════════════════════════════ */
+function toggleSort(colName){if(sortCol===colName)sortDir=sortDir==='asc'?'desc':'asc';else{sortCol=colName;sortDir='asc';}const indicator=document.getElementById('sort-indicator');indicator.style.display='flex';document.getElementById('sort-label').textContent=`${colName} (${sortDir==='asc'?'A→Z':'Z→A'})`;applyFilters();}
+function setSort(colName,dir){sortCol=colName;sortDir=dir;const indicator=document.getElementById('sort-indicator');indicator.style.display='flex';document.getElementById('sort-label').textContent=`${colName} (${dir==='asc'?'A→Z':'Z→A'})`;applyFilters();}
+function clearSort(){sortCol=null;sortDir='asc';document.getElementById('sort-indicator').style.display='none';applyFilters();}
+
+/* ═══════════════════════════════════════════════════════
+   COLUMN VISIBILITY
+═══════════════════════════════════════════════════════ */
+function buildColVisibilityMenu(){const menu=document.getElementById('col-visibility-menu');menu.innerHTML=`<div style="padding:6px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px;margin-bottom:4px;"><button class="btn btn-ghost btn-sm" style="font-size:11px;flex:1;" onclick="setAllColsVisible(true)">Show all</button><button class="btn btn-ghost btn-sm" style="font-size:11px;flex:1;" onclick="setAllColsVisible(false)">Hide all</button></div>${allColumns.map(col=>`<div class="col-vis-item" onclick="toggleColVisibility('${esc(col.name)}')"><input type="checkbox" id="vis-${esc(col.name)}" ${!hiddenCols.has(col.name)?'checked':''} style="accent-color:var(--indigo);" onchange="toggleColVisibility('${esc(col.name)}')"/><span class="col-type-badge ${typeClass(col.type)}" style="font-size:9px;">${shortType(col.type)}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(col.name)}">${esc(col.name)}</span></div>`).join('')}`;}
+function toggleColVisibility(colName){if(hiddenCols.has(colName))hiddenCols.delete(colName);else hiddenCols.add(colName);updateHiddenBadge();renderTable();const cb=document.getElementById(`vis-${colName}`);if(cb)cb.checked=!hiddenCols.has(colName);}
+function setAllColsVisible(show){hiddenCols=show?new Set():new Set(allColumns.map(c=>c.name));buildColVisibilityMenu();updateHiddenBadge();renderTable();}
+function updateHiddenBadge(){const badge=document.getElementById('hidden-col-badge');if(hiddenCols.size>0){badge.style.display='inline-flex';badge.textContent=`-${hiddenCols.size}`;}else badge.style.display='none';}
+function toggleColMenu(){const menu=document.getElementById('col-visibility-menu');menu.style.display=menu.style.display==='none'?'block':'none';}
+document.addEventListener('click',e=>{const btn=document.getElementById('col-toggle-btn');const menu=document.getElementById('col-visibility-menu');if(btn&&!btn.contains(e.target)&&menu&&!menu.contains(e.target))menu.style.display='none';});
+
+/* ═══════════════════════════════════════════════════════
+   EXPORT + INVESTIGATE
+═══════════════════════════════════════════════════════ */
+function exportData(){
+    if(!filteredData.length){showToast('No data to export','warning');return;}
+    const cols=allColumns.filter(c=>!hiddenCols.has(c.name)).map(c=>c.name);
+    const rows=[cols.join(','),...filteredData.map(row=>cols.map(c=>{const v=row[c];if(v===null||v===undefined)return'';const s=String(v);return s.includes(',')||s.includes('"')||s.includes('\n')?`"${s.replace(/"/g,'""')}"`:`${s}`;}).join(','))];
+    const blob=new Blob([rows.join('\n')],{type:'text/csv'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download=(currentFile||'export').replace(/\.[^.]+$/,'')+'_filtered.csv';a.click();URL.revokeObjectURL(url);
+    showToast(`Exported ${fmtNum(filteredData.length)} rows as CSV`,'success');
+}
+
+function investigateDataset(){if(currentFile){localStorage.setItem('active_file',currentFile);window.location.href='/chat';}}
+
+/* ═══════════════════════════════════════════════════════
+   STATE HELPERS
+═══════════════════════════════════════════════════════ */
+function resetState(){rawData=[];allColumns=[];filteredData=[];colFilters={};sortCol=null;sortDir='asc';currentPage=1;hiddenCols=new Set();activeColStats=null;selectedRows=new Set();}
+function showWelcome(){document.getElementById('welcome-state').style.display='block';document.getElementById('loading-state').style.display='none';document.getElementById('explorer-ui').style.display='none';}
+function showLoading(msg){document.getElementById('welcome-state').style.display='none';document.getElementById('loading-state').style.display='block';document.getElementById('explorer-ui').style.display='none';document.getElementById('loading-msg').textContent=msg;}
+function showExplorer(){document.getElementById('welcome-state').style.display='none';document.getElementById('loading-state').style.display='none';document.getElementById('explorer-ui').style.display='block';}
+
+/* ═══════════════════════════════════════════════════════
+   TYPE UTILITIES
+═══════════════════════════════════════════════════════ */
+function inferType(rows,colName){const sample=rows.slice(0,50).map(r=>r[colName]).filter(v=>v!==null&&v!==undefined&&v!=='');if(!sample.length)return'object';if(sample.every(v=>typeof v==='boolean'||v==='True'||v==='False'))return'bool';if(sample.every(v=>!isNaN(Number(v))))return sample.some(v=>String(v).includes('.'))?'float64':'int64';return'object';}
+function isNumericType(type){return['int64','float64','int32','float32','number','int','float','numeric'].includes((type||'').toLowerCase());}
+function typeClass(type){const t=(type||'').toLowerCase();if(isNumericType(t))return'col-type-num';if(t==='bool'||t==='boolean')return'col-type-bool';if(t.includes('date')||t.includes('time'))return'col-type-date';if(t==='object'||t==='string'||t==='str')return'col-type-text';return'col-type-other';}
+function shortType(type){const t=(type||'').toLowerCase();if(t.includes('float'))return'f64';if(t.includes('int'))return'i64';if(t==='object'||t==='string'||t==='str')return'txt';if(t==='bool'||t==='boolean')return'bool';if(t.includes('date'))return'date';return t.slice(0,4);}
+
+/* ═══════════════════════════════════════════════════════
+   FORMAT UTILITIES
+═══════════════════════════════════════════════════════ */
+function esc(str){return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+function fmtNum(n){return new Intl.NumberFormat().format(n);}
+function fmtVal(v){if(v===null||v===undefined)return'—';if(typeof v==='number')return new Intl.NumberFormat().format(v);return String(v);}
+function fmtSize(kb){if(kb>=1024)return(kb/1024).toFixed(1)+' MB';return kb.toFixed(1)+' KB';}
+</script>
+{% endblock %}

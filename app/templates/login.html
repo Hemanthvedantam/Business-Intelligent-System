@@ -1,0 +1,936 @@
+{% extends "base.html" %}
+{% block title %}Sign In — ABIP{% endblock %}
+
+{% block content %}
+<div class="lp-root">
+
+  <!-- ═══════════════════════════════════════
+       LEFT — product showcase panel
+  ═══════════════════════════════════════ -->
+  <div class="lp-left">
+
+    <!-- Animated network canvas -->
+    <canvas id="network-canvas" class="lp-canvas" aria-hidden="true"></canvas>
+
+    <!-- Gradient veil over canvas -->
+    <div class="lp-veil" aria-hidden="true"></div>
+
+    <div class="lp-left-inner">
+
+      <!-- Brand -->
+      <div class="lp-brand">
+        <div class="lp-brand-mark">
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true">
+            <path d="M11 2L20 7V15L11 20L2 15V7L11 2Z" stroke="white" stroke-width="1.5" fill="none"/>
+            <path d="M11 6L16 9V13L11 16L6 13V9L11 6Z" fill="white" fill-opacity="0.35"/>
+            <circle cx="11" cy="11" r="2" fill="white"/>
+          </svg>
+        </div>
+        <div>
+          <div class="lp-brand-name">ABIP</div>
+          <div class="lp-brand-sub">Autonomous Business Intelligence</div>
+        </div>
+      </div>
+
+      <!-- Headline -->
+      <h1 class="lp-headline">
+        Your data, already<br>
+        <span class="lp-headline-hl">thinking for you.</span>
+      </h1>
+
+      <!-- Live insight ticker -->
+      <div class="lp-ticker" aria-label="Sample AI insights">
+        <div class="lp-ticker-label">
+          <span class="lp-pulse" aria-hidden="true"></span>
+          Live insight
+        </div>
+        <div class="lp-ticker-track" id="ticker-track">
+          <div class="lp-ticker-item active" id="ticker-0">Revenue dropped 14% in Region 3 — root cause: supply chain delay in SKU-447 (confidence 91%)</div>
+          <div class="lp-ticker-item" id="ticker-1">Q4 forecast: 23% growth likely if current churn trend reverses within 18 days</div>
+          <div class="lp-ticker-item" id="ticker-2">3 anomalies detected in yesterday's upload — data quality score: 94/100</div>
+          <div class="lp-ticker-item" id="ticker-3">Recommendation: reduce inventory by 12% in Warehouse B — saves ~$42k/month</div>
+        </div>
+      </div>
+
+      <!-- Agent pipeline animation -->
+      <div class="lp-pipeline" aria-label="AI agent pipeline">
+        <div class="lp-pipeline-label">7 agents · working in sequence</div>
+        <div class="lp-pipeline-track" id="pipeline-track">
+          <div class="lp-pipe-node" data-agent="0">
+            <i class="ti ti-sitemap" aria-hidden="true"></i>
+            <span>Planner</span>
+          </div>
+          <div class="lp-pipe-arrow" aria-hidden="true"></div>
+          <div class="lp-pipe-node" data-agent="1">
+            <i class="ti ti-chart-dots" aria-hidden="true"></i>
+            <span>Analyst</span>
+          </div>
+          <div class="lp-pipe-arrow" aria-hidden="true"></div>
+          <div class="lp-pipe-node" data-agent="2">
+            <i class="ti ti-books" aria-hidden="true"></i>
+            <span>RAG</span>
+          </div>
+          <div class="lp-pipe-arrow" aria-hidden="true"></div>
+          <div class="lp-pipe-node" data-agent="3">
+            <i class="ti ti-trending-up" aria-hidden="true"></i>
+            <span>Forecast</span>
+          </div>
+          <div class="lp-pipe-arrow" aria-hidden="true"></div>
+          <div class="lp-pipe-node" data-agent="4">
+            <i class="ti ti-git-branch" aria-hidden="true"></i>
+            <span>Root&nbsp;Cause</span>
+          </div>
+          <div class="lp-pipe-arrow" aria-hidden="true"></div>
+          <div class="lp-pipe-node" data-agent="5">
+            <i class="ti ti-bulb" aria-hidden="true"></i>
+            <span>Recommend</span>
+          </div>
+          <div class="lp-pipe-arrow" aria-hidden="true"></div>
+          <div class="lp-pipe-node" data-agent="6">
+            <i class="ti ti-presentation-analytics" aria-hidden="true"></i>
+            <span>Executive</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Capability strip -->
+      <div class="lp-caps">
+        <div class="lp-cap">
+          <i class="ti ti-file-spreadsheet" aria-hidden="true"></i>
+          CSV · Excel · Parquet
+        </div>
+        <div class="lp-cap-divider" aria-hidden="true"></div>
+        <div class="lp-cap">
+          <i class="ti ti-wave-sine" aria-hidden="true"></i>
+          Streaming results
+        </div>
+        <div class="lp-cap-divider" aria-hidden="true"></div>
+        <div class="lp-cap">
+          <i class="ti ti-lock" aria-hidden="true"></i>
+          On-premise · private
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════
+       RIGHT — auth form
+  ═══════════════════════════════════════ -->
+  <div class="lp-right">
+    <div class="lp-card anim-scale">
+
+      <div class="lp-card-header">
+        <div class="lp-card-title" id="form-title">Welcome back</div>
+        <div class="lp-card-sub" id="form-sub">Sign in to your workspace</div>
+      </div>
+
+      <!-- Tab switcher -->
+      <div class="lp-tabs" role="tablist">
+        <button class="lp-tab active" id="tab-login" role="tab"
+                aria-selected="true" aria-controls="login-form"
+                onclick="switchTab('login')">Sign In</button>
+        <button class="lp-tab" id="tab-register" role="tab"
+                aria-selected="false" aria-controls="register-form"
+                onclick="switchTab('register')">Create Account</button>
+      </div>
+
+      <!-- Alert -->
+      <div id="auth-alert" style="display:none;" class="mb-16" role="alert" aria-live="polite"></div>
+
+      <!-- Login form -->
+      <div id="login-form" role="tabpanel" aria-labelledby="tab-login">
+        <div class="form-group">
+          <label class="form-label" for="login-email">Email address</label>
+          <div class="lp-input-wrap">
+            <i class="ti ti-mail lp-input-icon" aria-hidden="true"></i>
+            <input type="email" id="login-email" class="form-input lp-input-padded"
+                   placeholder="you@company.com" autocomplete="email">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="login-password">Password</label>
+          <div class="lp-input-wrap">
+            <i class="ti ti-lock lp-input-icon" aria-hidden="true"></i>
+            <input type="password" id="login-password" class="form-input lp-input-padded"
+                   placeholder="Enter your password" autocomplete="current-password">
+          </div>
+        </div>
+        <button class="btn btn-primary w-full btn-lg lp-submit-btn" id="login-btn" onclick="doLogin()">
+          <span id="login-btn-text">Sign In</span>
+          <i class="ti ti-arrow-right" id="login-btn-arrow" aria-hidden="true"></i>
+        </button>
+      </div>
+
+      <!-- Register form -->
+      <div id="register-form" style="display:none;" role="tabpanel" aria-labelledby="tab-register">
+        <div class="form-group">
+          <label class="form-label" for="reg-name">Full name</label>
+          <div class="lp-input-wrap">
+            <i class="ti ti-user lp-input-icon" aria-hidden="true"></i>
+            <input type="text" id="reg-name" class="form-input lp-input-padded"
+                   placeholder="Your full name" autocomplete="name">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="reg-email">Work email</label>
+          <div class="lp-input-wrap">
+            <i class="ti ti-mail lp-input-icon" aria-hidden="true"></i>
+            <input type="email" id="reg-email" class="form-input lp-input-padded"
+                   placeholder="you@company.com" autocomplete="email">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="reg-password">Password</label>
+          <div class="lp-input-wrap">
+            <i class="ti ti-lock lp-input-icon" aria-hidden="true"></i>
+            <input type="password" id="reg-password" class="form-input lp-input-padded"
+                   placeholder="Min 8 characters" autocomplete="new-password">
+          </div>
+        </div>
+        <button class="btn btn-primary w-full btn-lg lp-submit-btn" id="register-btn" onclick="doRegister()">
+          <span id="register-btn-text">Create Account</span>
+          <i class="ti ti-arrow-right" id="register-btn-arrow" aria-hidden="true"></i>
+        </button>
+      </div>
+
+      <div class="lp-card-footer">
+        <i class="ti ti-shield-check" aria-hidden="true"></i>
+        Secure · Private · Your data never leaves your server
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     LOGIN PAGE STYLES  (scoped — lp- prefix)
+═══════════════════════════════════════════ -->
+<style>
+/* ── Root layout ── */
+.lp-root {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+}
+
+/* ══════════════════════
+   LEFT PANEL
+══════════════════════ */
+.lp-left {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  /* Deep navy — unmistakably data-platform */
+  background: #0B1120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 56px;
+}
+
+.lp-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0.55;
+}
+
+/* Soft gradient veil over canvas so text stays readable */
+.lp-veil {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 70% 60% at 20% 80%, rgba(56,189,248,0.08) 0%, transparent 70%),
+    radial-gradient(ellipse 50% 50% at 80% 15%, rgba(99,102,241,0.09) 0%, transparent 65%),
+    linear-gradient(180deg, rgba(11,17,32,0.2) 0%, rgba(11,17,32,0.45) 100%);
+  pointer-events: none;
+}
+
+.lp-left-inner {
+  position: relative;
+  z-index: 2;
+  max-width: 520px;
+  width: 100%;
+}
+
+/* ── Brand ── */
+.lp-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 52px;
+}
+
+.lp-brand-mark {
+  width: 44px;
+  height: 44px;
+  background: linear-gradient(135deg, #38bdf8 0%, #6366f1 100%);
+  border-radius: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.1), 0 4px 16px rgba(56,189,248,0.25);
+}
+
+.lp-brand-name {
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.03em;
+}
+
+.lp-brand-sub {
+  font-size: 11px;
+  color: rgba(255,255,255,0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-top: 1px;
+}
+
+/* ── Headline ── */
+.lp-headline {
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
+  font-size: 38px;
+  font-weight: 700;
+  line-height: 1.18;
+  letter-spacing: -0.04em;
+  color: rgba(255,255,255,0.92);
+  margin-bottom: 36px;
+}
+
+.lp-headline-hl {
+  /* Gradient text */
+  background: linear-gradient(100deg, #38bdf8 0%, #818cf8 55%, #c084fc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Live insight ticker ── */
+.lp-ticker {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-bottom: 28px;
+  overflow: hidden;
+}
+
+.lp-ticker-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #38bdf8;
+  margin-bottom: 10px;
+}
+
+.lp-pulse {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  background: #38bdf8;
+  border-radius: 50%;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.lp-pulse::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1.5px solid #38bdf8;
+  animation: lp-ripple 2s ease-out infinite;
+}
+
+@keyframes lp-ripple {
+  0%   { opacity: 0.8; transform: scale(0.6); }
+  100% { opacity: 0;   transform: scale(1.8); }
+}
+
+.lp-ticker-track {
+  position: relative;
+  min-height: 44px;
+}
+
+.lp-ticker-item {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  font-size: 13px;
+  color: rgba(255,255,255,0.7);
+  line-height: 1.6;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+  pointer-events: none;
+}
+
+.lp-ticker-item.active {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+  position: relative;
+}
+
+/* ── Agent pipeline ── */
+.lp-pipeline {
+  margin-bottom: 32px;
+}
+
+.lp-pipeline-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: rgba(255,255,255,0.3);
+  margin-bottom: 12px;
+}
+
+.lp-pipeline-track {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.lp-pipeline-track::-webkit-scrollbar { display: none; }
+
+.lp-pipe-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 10px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.07);
+  background: rgba(255,255,255,0.03);
+  min-width: 64px;
+  flex-shrink: 0;
+  transition: all 0.35s ease;
+  opacity: 0.35;
+}
+
+.lp-pipe-node i {
+  font-size: 17px;
+  color: rgba(255,255,255,0.5);
+  transition: color 0.35s;
+}
+
+.lp-pipe-node span {
+  font-size: 9.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(255,255,255,0.4);
+  text-align: center;
+  white-space: nowrap;
+  transition: color 0.35s;
+}
+
+/* running state */
+.lp-pipe-node.lp-running {
+  border-color: rgba(251,191,36,0.4);
+  background: rgba(251,191,36,0.07);
+  opacity: 1;
+}
+
+.lp-pipe-node.lp-running i { color: #fbbf24; }
+.lp-pipe-node.lp-running span { color: #fbbf24; }
+
+/* done state */
+.lp-pipe-node.lp-done {
+  border-color: rgba(56,189,248,0.3);
+  background: rgba(56,189,248,0.06);
+  opacity: 1;
+}
+
+.lp-pipe-node.lp-done i { color: #38bdf8; }
+.lp-pipe-node.lp-done span { color: rgba(56,189,248,0.85); }
+
+.lp-pipe-arrow {
+  width: 14px;
+  height: 1px;
+  background: rgba(255,255,255,0.12);
+  flex-shrink: 0;
+  position: relative;
+}
+
+.lp-pipe-arrow::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: -3px;
+  border-left: 5px solid rgba(255,255,255,0.12);
+  border-top: 3.5px solid transparent;
+  border-bottom: 3.5px solid transparent;
+}
+
+/* ── Capability strip ── */
+.lp-caps {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.lp-cap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: rgba(255,255,255,0.38);
+}
+
+.lp-cap i { font-size: 13px; }
+
+.lp-cap-divider {
+  width: 1px;
+  height: 14px;
+  background: rgba(255,255,255,0.1);
+  flex-shrink: 0;
+}
+
+/* ══════════════════════
+   RIGHT PANEL — form
+══════════════════════ */
+.lp-right {
+  width: 480px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 40px;
+  background: var(--bg);
+  position: relative;
+}
+
+/* Subtle top-edge accent line */
+.lp-right::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #38bdf8, #6366f1, transparent);
+  opacity: 0.6;
+}
+
+.lp-card {
+  width: 100%;
+  max-width: 380px;
+}
+
+.lp-card-header { margin-bottom: 28px; }
+
+.lp-card-title {
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.lp-card-sub {
+  font-size: 14px;
+  color: var(--text-3);
+}
+
+/* ── Tabs ── */
+.lp-tabs {
+  display: flex;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px;
+  margin-bottom: 28px;
+}
+
+.lp-tab {
+  flex: 1;
+  padding: 9px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-3);
+  border-radius: 7px;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  font-size: 13.5px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.lp-tab:hover { color: var(--text-2); }
+
+.lp-tab.active {
+  background: var(--bg-card);
+  color: var(--text);
+  border-color: var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ── Input icon wrapper ── */
+.lp-input-wrap {
+  position: relative;
+}
+
+.lp-input-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 15px;
+  color: var(--text-3);
+  pointer-events: none;
+  transition: color 0.15s;
+}
+
+.lp-input-padded {
+  padding-left: 38px !important;
+}
+
+.lp-input-wrap:focus-within .lp-input-icon {
+  color: var(--blue);
+}
+
+/* ── Submit button ── */
+.lp-submit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  position: relative;
+  overflow: hidden;
+}
+
+.lp-submit-btn .ti-arrow-right {
+  font-size: 16px;
+  transition: transform 0.2s ease;
+}
+
+.lp-submit-btn:hover .ti-arrow-right {
+  transform: translateX(3px);
+}
+
+/* Loading state for submit button */
+.lp-submit-btn.lp-loading .ti-arrow-right { display: none; }
+
+/* ── Card footer ── */
+.lp-card-footer {
+  margin-top: 24px;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--text-3);
+  letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.lp-card-footer .ti-shield-check { font-size: 13px; color: var(--green-text); }
+
+/* ── Alert ── */
+.auth-alert-error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--red-light);
+  border: 1px solid rgba(239,68,68,0.2);
+  border-radius: var(--radius);
+  color: var(--red-text);
+  font-size: 13px;
+  animation: slideIn 0.25s ease;
+}
+
+.auth-alert-success {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--green-light);
+  border: 1px solid rgba(16,185,129,0.2);
+  border-radius: var(--radius);
+  color: var(--green-text);
+  font-size: 13px;
+  animation: slideIn 0.25s ease;
+}
+
+/* ══════════════════════
+   RESPONSIVE
+══════════════════════ */
+@media (max-width: 960px) {
+  .lp-left   { display: none; }
+  .lp-right  { width: 100%; padding: 32px 24px; }
+  .lp-right::before { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-pulse::after,
+  .lp-ticker-item,
+  .lp-pipe-node { animation: none !important; transition: none !important; }
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* ═══════════════════════════════════════════
+   AUTH LOGIC — identical to original
+═══════════════════════════════════════════ */
+function switchTab(tab) {
+  const isLogin = tab === 'login';
+  document.getElementById('login-form').style.display    = isLogin ? 'block' : 'none';
+  document.getElementById('register-form').style.display = isLogin ? 'none'  : 'block';
+  document.getElementById('tab-login').classList.toggle('active', isLogin);
+  document.getElementById('tab-register').classList.toggle('active', !isLogin);
+  document.getElementById('tab-login').setAttribute('aria-selected', isLogin);
+  document.getElementById('tab-register').setAttribute('aria-selected', !isLogin);
+  document.getElementById('form-title').textContent = isLogin ? 'Welcome back'           : 'Create account';
+  document.getElementById('form-sub').textContent   = isLogin ? 'Sign in to your workspace' : 'Start your free workspace';
+  document.getElementById('auth-alert').style.display = 'none';
+}
+
+function showAlert(msg, type = 'error') {
+  const el = document.getElementById('auth-alert');
+  el.style.display = 'block';
+  el.className = (type === 'error' ? 'auth-alert-error' : 'auth-alert-success') + ' mb-16';
+  const icon = type === 'error'
+    ? '<i class="ti ti-alert-circle" aria-hidden="true"></i>'
+    : '<i class="ti ti-circle-check" aria-hidden="true"></i>';
+  el.innerHTML = `${icon}<span>${msg}</span>`;
+}
+
+function setLoading(btnId, arrowId, loading, defaultLabel) {
+  const btn   = document.getElementById(btnId);
+  const arrow = document.getElementById(arrowId);
+  btn.disabled = loading;
+  btn.classList.toggle('lp-loading', loading);
+  document.getElementById(btnId + '-text').textContent = loading
+    ? (defaultLabel === 'Sign In' ? 'Signing in…' : 'Creating account…')
+    : defaultLabel;
+  if (arrow) arrow.style.display = loading ? 'none' : '';
+}
+
+async function doLogin() {
+  const email    = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  if (!email || !password) { showAlert('Please fill in all fields'); return; }
+
+  setLoading('login-btn', 'login-btn-arrow', true, 'Sign In');
+
+  try {
+    const res  = await fetch('/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if (!res.ok) { showAlert(data.detail || 'Login failed'); return; }
+    saveToken(data.token, data.user);
+    window.location.href = '/dashboard';
+  } catch (e) {
+    showAlert('Connection error. Please try again.');
+  } finally {
+    setLoading('login-btn', 'login-btn-arrow', false, 'Sign In');
+  }
+}
+
+async function doRegister() {
+  const name     = document.getElementById('reg-name').value.trim();
+  const email    = document.getElementById('reg-email').value.trim();
+  const password = document.getElementById('reg-password').value;
+
+  if (!name || !email || !password) { showAlert('Please fill in all fields'); return; }
+  if (password.length < 8) { showAlert('Password must be at least 8 characters'); return; }
+
+  setLoading('register-btn', 'register-btn-arrow', true, 'Create Account');
+
+  try {
+    const res  = await fetch('/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password })
+    });
+    const data = await res.json();
+    if (!res.ok) { showAlert(data.detail || 'Registration failed'); return; }
+    saveToken(data.token, data.user);
+    window.location.href = '/dashboard';
+  } catch (e) {
+    showAlert('Connection error. Please try again.');
+  } finally {
+    setLoading('register-btn', 'register-btn-arrow', false, 'Create Account');
+  }
+}
+
+document.addEventListener('keypress', e => {
+  if (e.key !== 'Enter') return;
+  const loginVisible = document.getElementById('login-form').style.display !== 'none';
+  loginVisible ? doLogin() : doRegister();
+});
+
+/* ═══════════════════════════════════════════
+   INSIGHT TICKER — cycles every 4s
+═══════════════════════════════════════════ */
+(function initTicker() {
+  const items = document.querySelectorAll('.lp-ticker-item');
+  let current = 0;
+
+  setInterval(() => {
+    items[current].classList.remove('active');
+    current = (current + 1) % items.length;
+    items[current].classList.add('active');
+  }, 4200);
+})();
+
+/* ═══════════════════════════════════════════
+   AGENT PIPELINE ANIMATION — loops continuously
+═══════════════════════════════════════════ */
+(function initPipeline() {
+  const nodes   = document.querySelectorAll('.lp-pipe-node');
+  const total   = nodes.length;
+  let activeIdx = -1;
+  let doneCount = 0;
+
+  function step() {
+    if (activeIdx >= 0 && activeIdx < total) {
+      nodes[activeIdx].classList.remove('lp-running');
+      nodes[activeIdx].classList.add('lp-done');
+    }
+    activeIdx++;
+
+    if (activeIdx >= total) {
+      /* Reset — pause 1.5s then restart */
+      setTimeout(() => {
+        nodes.forEach(n => n.classList.remove('lp-done', 'lp-running'));
+        activeIdx = -1;
+        doneCount = 0;
+        setTimeout(step, 400);
+      }, 1500);
+      return;
+    }
+
+    nodes[activeIdx].classList.add('lp-running');
+    /* Each agent "runs" for 600ms */
+    setTimeout(step, 700);
+  }
+
+  /* Start after 800ms so page has settled */
+  setTimeout(step, 800);
+})();
+
+/* ═══════════════════════════════════════════
+   NETWORK CANVAS — animated node graph
+═══════════════════════════════════════════ */
+(function initNetwork() {
+  const canvas = document.getElementById('network-canvas');
+  if (!canvas) return;
+
+  const ctx    = canvas.getContext('2d');
+  let W, H, nodes, frame;
+
+  const NODE_COUNT   = 38;
+  const CONNECT_DIST = 130;
+  const COLORS       = ['#38bdf8', '#6366f1', '#818cf8', '#c084fc', '#38bdf8'];
+
+  function resize() {
+    W = canvas.offsetWidth;
+    H = canvas.offsetHeight;
+    canvas.width  = W;
+    canvas.height = H;
+  }
+
+  function makeNode() {
+    const color = COLORS[Math.floor(Math.random() * COLORS.length)];
+    return {
+      x:   Math.random() * W,
+      y:   Math.random() * H,
+      vx:  (Math.random() - 0.5) * 0.35,
+      vy:  (Math.random() - 0.5) * 0.35,
+      r:   Math.random() * 1.8 + 1.0,
+      color,
+      pulse: Math.random() * Math.PI * 2   /* phase offset for gentle size pulse */
+    };
+  }
+
+  function init() {
+    resize();
+    nodes = Array.from({ length: NODE_COUNT }, makeNode);
+  }
+
+  function draw(t) {
+    ctx.clearRect(0, 0, W, H);
+
+    /* Update positions */
+    nodes.forEach(n => {
+      n.x += n.vx;
+      n.y += n.vy;
+      if (n.x < 0 || n.x > W) n.vx *= -1;
+      if (n.y < 0 || n.y > H) n.vy *= -1;
+    });
+
+    /* Draw edges */
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const dx   = nodes[i].x - nodes[j].x;
+        const dy   = nodes[i].y - nodes[j].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < CONNECT_DIST) {
+          const alpha = (1 - dist / CONNECT_DIST) * 0.22;
+          ctx.beginPath();
+          ctx.moveTo(nodes[i].x, nodes[i].y);
+          ctx.lineTo(nodes[j].x, nodes[j].y);
+          ctx.strokeStyle = `rgba(99,102,241,${alpha})`;
+          ctx.lineWidth   = 0.7;
+          ctx.stroke();
+        }
+      }
+    }
+
+    /* Draw nodes */
+    nodes.forEach((n, idx) => {
+      const pulse = Math.sin(t * 0.001 + n.pulse) * 0.4;
+      const r     = n.r + pulse;
+
+      /* Soft outer glow */
+      const grd = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, r * 4);
+      grd.addColorStop(0, n.color.replace(')', ',0.18)').replace('rgb', 'rgba').replace('#', 'rgba(').replace('rgba(', 'rgba('));
+      grd.addColorStop(1, 'transparent');
+
+      /* Simple dot */
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = n.color;
+      ctx.globalAlpha = 0.75;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    });
+
+    frame = requestAnimationFrame(draw);
+  }
+
+  /* Pause when tab hidden (save CPU) */
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { cancelAnimationFrame(frame); }
+    else { frame = requestAnimationFrame(draw); }
+  });
+
+  window.addEventListener('resize', () => { resize(); });
+
+  init();
+  frame = requestAnimationFrame(draw);
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,342 @@
+{% extends "base.html" %}
+{% block title %}Reports — ABIP{% endblock %}
+{% block breadcrumb %}Reports{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-secondary btn-sm" onclick="loadReports()">
+    <i class="ti ti-refresh" aria-hidden="true"></i> Refresh
+</button>
+<a href="/chat" class="btn btn-primary btn-sm">
+    <i class="ti ti-plus" aria-hidden="true"></i> New Investigation
+</a>
+{% endblock %}
+
+{% block content %}
+
+<!-- Page header -->
+<div class="page-header mb-24 anim-slide">
+    <div>
+        <div class="page-title">Reports</div>
+        <div class="page-subtitle">Generated investigation reports — PDF and DOCX exports</div>
+    </div>
+</div>
+
+<!-- KPI strip -->
+<div class="reports-kpi-bar mb-24 anim-slide">
+    <div class="rep-kpi">
+        <div class="rep-kpi-icon" style="background:var(--indigo-dim);color:var(--indigo);">
+            <i class="ti ti-file-description" aria-hidden="true"></i>
+        </div>
+        <div class="rep-kpi-val" id="kpi-total-reports">—</div>
+        <div class="rep-kpi-lbl">Total Reports</div>
+    </div>
+    <div class="rep-kpi-div"></div>
+    <div class="rep-kpi">
+        <div class="rep-kpi-icon" style="background:var(--red-light);color:var(--red-text);">
+            <i class="ti ti-file-type-pdf" aria-hidden="true"></i>
+        </div>
+        <div class="rep-kpi-val" id="kpi-pdf-reports">—</div>
+        <div class="rep-kpi-lbl">PDF Reports</div>
+    </div>
+    <div class="rep-kpi-div"></div>
+    <div class="rep-kpi">
+        <div class="rep-kpi-icon" style="background:var(--blue-light);color:var(--blue);">
+            <i class="ti ti-file-type-doc" aria-hidden="true"></i>
+        </div>
+        <div class="rep-kpi-val" id="kpi-docx-reports">—</div>
+        <div class="rep-kpi-lbl">DOCX Reports</div>
+    </div>
+    <div class="rep-kpi-div"></div>
+    <div class="rep-kpi">
+        <div class="rep-kpi-icon" style="background:var(--green-light);color:var(--green-text);">
+            <i class="ti ti-download" aria-hidden="true"></i>
+        </div>
+        <div class="rep-kpi-val" id="kpi-recent-reports">—</div>
+        <div class="rep-kpi-lbl">This Week</div>
+    </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 300px;gap:20px;align-items:start;">
+
+    <!-- Reports List -->
+    <div>
+        <!-- Filter bar -->
+        <div class="card mb-16" style="padding:12px 16px;">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                <div style="position:relative;flex:1;min-width:180px;">
+                    <i class="ti ti-search" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-3);font-size:13px;pointer-events:none;" aria-hidden="true"></i>
+                    <input id="rep-search" type="text" class="form-input" placeholder="Search reports..."
+                           style="padding-left:30px;" oninput="filterReports()" />
+                </div>
+                <select id="rep-format-filter" class="form-input" style="width:120px;" onchange="filterReports()">
+                    <option value="">All Formats</option>
+                    <option value="pdf">PDF</option>
+                    <option value="docx">DOCX</option>
+                </select>
+                <select id="rep-sort" class="form-input" style="width:140px;" onchange="filterReports()">
+                    <option value="newest">Newest First</option>
+                    <option value="oldest">Oldest First</option>
+                    <option value="name">By Name</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Report rows -->
+        <div id="reports-list">
+            <div class="card" style="padding:48px;text-align:center;">
+                <div class="spinner spinner-lg" style="margin:0 auto 16px;"></div>
+                <div class="text-dim">Loading reports...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right panel: Generate + Info -->
+    <div style="display:flex;flex-direction:column;gap:16px;position:sticky;top:80px;">
+
+        <!-- Generate new report -->
+        <div class="card anim-slide delay-1">
+            <div class="card-header">
+                <div class="card-title">Generate Report</div>
+            </div>
+            <div style="font-size:12.5px;color:var(--text-3);margin-bottom:14px;line-height:1.6;">
+                Select a completed investigation to generate a professional PDF or DOCX report.
+            </div>
+            <select id="inv-select" class="form-input mb-10" style="font-size:12.5px;">
+                <option value="">Select an investigation...</option>
+            </select>
+            <div style="display:flex;gap:8px;">
+                <button class="btn btn-primary btn-sm" style="flex:1;justify-content:center;"
+                        onclick="generateReport('pdf')">
+                    <i class="ti ti-file-type-pdf" aria-hidden="true"></i> PDF
+                </button>
+                <button class="btn btn-secondary btn-sm" style="flex:1;justify-content:center;"
+                        onclick="generateReport('docx')">
+                    <i class="ti ti-file-type-doc" aria-hidden="true"></i> DOCX
+                </button>
+            </div>
+            <div id="gen-status" style="display:none;margin-top:12px;"></div>
+        </div>
+
+        <!-- Report info -->
+        <div class="card anim-slide delay-2">
+            <div class="card-header"><div class="card-title">What's included</div></div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+                <div class="rep-info-row"><i class="ti ti-circle-check" style="color:var(--green);font-size:14px;" aria-hidden="true"></i><span>Executive summary with KPIs</span></div>
+                <div class="rep-info-row"><i class="ti ti-circle-check" style="color:var(--green);font-size:14px;" aria-hidden="true"></i><span>Root cause evidence tree</span></div>
+                <div class="rep-info-row"><i class="ti ti-circle-check" style="color:var(--green);font-size:14px;" aria-hidden="true"></i><span>Visual charts and trends</span></div>
+                <div class="rep-info-row"><i class="ti ti-circle-check" style="color:var(--green);font-size:14px;" aria-hidden="true"></i><span>Actionable recommendations</span></div>
+                <div class="rep-info-row"><i class="ti ti-circle-check" style="color:var(--green);font-size:14px;" aria-hidden="true"></i><span>Agent reasoning log</span></div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<style>
+.reports-kpi-bar {
+    display: flex; align-items: center;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: 18px 28px;
+}
+
+.rep-kpi { display: flex; align-items: center; gap: 12px; flex: 1; padding: 0 12px; }
+.rep-kpi:first-child { padding-left: 0; }
+.rep-kpi:last-child  { padding-right: 0; }
+
+.rep-kpi-icon { width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; }
+.rep-kpi-val  { font-size: 22px; font-weight: 800; color: var(--text); letter-spacing: -0.02em; line-height: 1; }
+.rep-kpi-lbl  { font-size: 11.5px; color: var(--text-3); margin-top: 2px; white-space: nowrap; }
+.rep-kpi-div  { width: 1px; height: 36px; background: var(--border); flex-shrink: 0; }
+
+.report-row {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: 16px 20px;
+    display: flex; align-items: center; gap: 14px;
+    margin-bottom: 10px; transition: all 0.18s;
+}
+
+.report-row:hover { border-color: var(--border-hover); box-shadow: var(--shadow); transform: translateY(-1px); }
+
+.report-format-badge {
+    width: 40px; height: 40px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; font-weight: 800; flex-shrink: 0;
+    letter-spacing: -0.02em;
+}
+
+.report-row-body { flex: 1; min-width: 0; }
+.report-row-name { font-size: 13.5px; font-weight: 700; color: var(--text); margin-bottom: 3px;
+                   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.report-row-meta { font-size: 11.5px; color: var(--text-3); display: flex; gap: 8px; align-items: center; }
+
+.report-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+.rep-info-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-2); padding: 5px 0; }
+</style>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+requireAuth();
+
+let allReports = [], allInvestigations = [];
+
+window.onload = () => { loadReports(); loadInvestigations(); };
+
+async function loadReports() {
+    const res = await apiFetch('/reports/list');
+
+    if (!res || !res.ok) {
+        // Show empty state — reports endpoint may not exist yet
+        renderEmptyReports();
+        updateKPIs([]);
+        return;
+    }
+    const data = await res.json();
+    allReports = data.reports || [];
+    updateKPIs(allReports);
+    filterReports();
+}
+
+async function loadInvestigations() {
+    const res = await apiFetch('/investigations/list');
+    if (!res || !res.ok) return;
+    const data = await res.json();
+    allInvestigations = (data.investigations || []).filter(i =>
+        i.status === 'completed' || i.status === 'COMPLETED'
+    );
+
+    const sel = document.getElementById('inv-select');
+    if (!allInvestigations.length) {
+        sel.innerHTML = '<option value="">No completed investigations yet</option>';
+        return;
+    }
+    sel.innerHTML = '<option value="">Select an investigation...</option>' +
+        allInvestigations.map(inv =>
+            `<option value="${inv.id}">${escHtml(inv.question.substring(0, 60))} — ${escHtml(inv.filename || '')}</option>`
+        ).join('');
+}
+
+function updateKPIs(reports) {
+    const pdfs  = reports.filter(r => r.format === 'pdf').length;
+    const docxs = reports.filter(r => r.format === 'docx').length;
+    const week  = reports.filter(r => {
+        const d = new Date(r.created_at);
+        return (Date.now() - d.getTime()) < 7 * 86400 * 1000;
+    }).length;
+
+    document.getElementById('kpi-total-reports').textContent  = reports.length;
+    document.getElementById('kpi-pdf-reports').textContent    = pdfs;
+    document.getElementById('kpi-docx-reports').textContent   = docxs;
+    document.getElementById('kpi-recent-reports').textContent = week;
+}
+
+function filterReports() {
+    const q      = document.getElementById('rep-search').value.toLowerCase();
+    const fmt    = document.getElementById('rep-format-filter').value;
+    const sort   = document.getElementById('rep-sort').value;
+
+    let list = allReports.filter(r => {
+        const matchQ = !q || (r.filename||'').toLowerCase().includes(q) || (r.question||'').toLowerCase().includes(q);
+        const matchF = !fmt || r.format === fmt;
+        return matchQ && matchF;
+    });
+
+    if (sort === 'oldest') list = [...list].sort((a,b) => new Date(a.created_at) - new Date(b.created_at));
+    if (sort === 'newest') list = [...list].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+    if (sort === 'name')   list = [...list].sort((a,b) => (a.filename||'').localeCompare(b.filename||''));
+
+    renderReportsList(list);
+}
+
+function renderReportsList(reports) {
+    const wrap = document.getElementById('reports-list');
+
+    if (!reports.length) {
+        renderEmptyReports();
+        return;
+    }
+
+    wrap.innerHTML = reports.map(r => {
+        const isPdf  = r.format === 'pdf';
+        const dt     = r.created_at ? new Date(r.created_at).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}) : '—';
+        return `
+        <div class="report-row">
+            <div class="report-format-badge" style="background:${isPdf ? 'var(--red-light)' : 'var(--blue-light)'};color:${isPdf ? 'var(--red-text)' : 'var(--blue)'};">
+                <i class="ti ${isPdf ? 'ti-file-type-pdf' : 'ti-file-type-doc'}" style="font-size:18px;" aria-hidden="true"></i>
+            </div>
+            <div class="report-row-body">
+                <div class="report-row-name">${escHtml(r.filename || `Report #${r.id}`)}</div>
+                <div class="report-row-meta">
+                    <span class="badge ${isPdf ? 'badge-red' : 'badge-blue'}" style="font-size:10px;">${r.format?.toUpperCase() || '—'}</span>
+                    ${r.investigation_id ? `<span>Investigation #${r.investigation_id}</span>` : ''}
+                    <span>${dt}</span>
+                    ${r.size ? `<span>${fmtSize(r.size)}</span>` : ''}
+                </div>
+            </div>
+            <div class="report-row-actions">
+                <a href="/reports/download/${r.investigation_id || r.id}?format=${r.format}"
+                   class="btn btn-primary btn-sm" target="_blank" style="font-size:12px;">
+                    <i class="ti ti-download" aria-hidden="true"></i> Download
+                </a>
+                <button class="btn btn-ghost btn-sm" style="font-size:12px;"
+                        onclick="shareReport(${r.investigation_id || r.id})">
+                    <i class="ti ti-share" aria-hidden="true"></i>
+                </button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function renderEmptyReports() {
+    document.getElementById('reports-list').innerHTML = `
+        <div class="card" style="padding:64px;text-align:center;">
+            <i class="ti ti-file-off" style="font-size:48px;color:var(--border);display:block;margin-bottom:16px;" aria-hidden="true"></i>
+            <div style="font-size:15px;font-weight:600;color:var(--text-2);margin-bottom:8px;">No reports yet</div>
+            <div class="text-dim" style="font-size:13px;margin-bottom:20px;">
+                Complete an investigation and generate a PDF or DOCX report from the investigation page or the panel on the right.
+            </div>
+            <a href="/chat" class="btn btn-primary btn-sm">
+                <i class="ti ti-search" aria-hidden="true"></i> Start an Investigation
+            </a>
+        </div>`;
+}
+
+async function generateReport(format) {
+    const invId = document.getElementById('inv-select').value;
+    if (!invId) { showToast('Select an investigation first', 'warning'); return; }
+
+    const status = document.getElementById('gen-status');
+    status.style.display = 'block';
+    status.innerHTML = `<div class="intel-loading"><div class="spinner"></div><span>Generating ${format.toUpperCase()} report...</span></div>`;
+
+    showToast(`Generating ${format.toUpperCase()} report...`, 'info', 3000);
+    window.open(`/reports/download/${invId}?format=${format}`, '_blank');
+
+    setTimeout(() => {
+        status.innerHTML = `<div class="alert alert-success" style="padding:8px 12px;font-size:12px;">
+            <i class="ti ti-circle-check alert-icon" aria-hidden="true"></i>
+            Report opened in new tab. It will appear in the list once generated.
+        </div>`;
+        setTimeout(() => loadReports(), 2000);
+    }, 1500);
+}
+
+function shareReport(invId) {
+    const url = `${window.location.origin}/reports/view/${invId}`;
+    navigator.clipboard.writeText(url).then(() => showToast('Report link copied', 'success'));
+}
+
+function fmtSize(bytes) {
+    if (!bytes) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1048576) return `${(bytes/1024).toFixed(1)} KB`;
+    return `${(bytes/1048576).toFixed(1)} MB`;
+}
+
+function escHtml(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+{% endblock %}

@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}ABIP{% endblock %} — Business Intelligence Platform</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+
+    <!-- Tabler Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.0.0/tabler-icons.min.css">
+
+    <!-- Chart.js for visualizations -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+    <!-- Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    {% block head %}{% endblock %}
+
+    <style>
+    /* ═══════════════════════════════════════════════════════
+       UPGRADE 9 — Premium Navigation
+       Animated active indicator · Glassmorphism · Smooth
+       collapse · Hover glow · Context-aware transitions
+    ═══════════════════════════════════════════════════════ */
+
+    /* ── Sidebar glass effect ── */
+    .sidebar {
+        background: rgba(255,255,255,0.92);
+        backdrop-filter: blur(20px) saturate(180%);
+        -webkit-backdrop-filter: blur(20px) saturate(180%);
+        border-right: 1px solid rgba(226,232,240,0.8);
+        transition: width 0.28s cubic-bezier(0.4,0,0.2,1);
+    }
+
+    /* ── Brand logo shimmer on hover ── */
+    .sidebar-logo {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        position: relative;
+        overflow: hidden;
+    }
+    .sidebar-logo::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(135deg, rgba(255,255,255,0.25) 0%, transparent 60%);
+        border-radius: inherit;
+    }
+    .sidebar-brand:hover .sidebar-logo {
+        transform: scale(1.08);
+        box-shadow: 0 0 0 4px rgba(37,99,235,0.15);
+    }
+
+    /* ── Sliding active indicator pill ── */
+    .nav-indicator {
+        position: absolute;
+        left: 8px;
+        right: 8px;
+        height: 34px;
+        background: var(--blue-light);
+        border-radius: var(--radius);
+        border: 1px solid var(--blue-mid);
+        pointer-events: none;
+        z-index: 0;
+        transition: top 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                    opacity 0.2s ease,
+                    height 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+        opacity: 0;
+    }
+    .nav-indicator.visible { opacity: 1; }
+
+    /* ── Ensure nav items sit above indicator ── */
+    .nav-item {
+        position: relative;
+        z-index: 1;
+        transition: color 0.15s ease, background 0.15s ease,
+                    transform 0.12s ease, box-shadow 0.15s ease;
+    }
+
+    /* Remove background from active (indicator handles it) */
+    .nav-item.active {
+        background: transparent;
+        color: var(--blue-text);
+    }
+
+    /* ── Hover glow — subtle left accent ── */
+    .nav-item::before {
+        content: '';
+        position: absolute;
+        left: -8px;
+        top: 50%;
+        transform: translateY(-50%) scaleY(0);
+        width: 3px;
+        height: 60%;
+        background: var(--blue);
+        border-radius: 0 2px 2px 0;
+        transition: transform 0.18s cubic-bezier(0.4,0,0.2,1);
+    }
+    .nav-item.active::before { transform: translateY(-50%) scaleY(1); }
+
+    /* ── Icon transition ── */
+    .nav-item-icon {
+        transition: color 0.15s ease, transform 0.15s ease;
+    }
+    .nav-item:hover .nav-item-icon {
+        color: var(--text-2);
+        transform: scale(1.1);
+    }
+    .nav-item.active .nav-item-icon {
+        color: var(--blue);
+        transform: scale(1.0);
+    }
+
+    /* ── Hover state — no bg for active (indicator handles it) ── */
+    .nav-item:not(.active):hover {
+        background: rgba(241,245,249,0.8);
+        color: var(--text);
+        transform: translateX(2px);
+    }
+
+    /* ── Section labels with collapse control ── */
+    .nav-group-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        cursor: pointer;
+        user-select: none;
+        padding: 2px 8px 2px 8px;
+        border-radius: var(--radius-sm);
+        transition: background 0.15s;
+        margin-top: 8px;
+    }
+    .nav-group-header:hover { background: rgba(241,245,249,0.6); }
+    .nav-group-header .sidebar-section-label { margin-top: 0; padding: 6px 0 4px; }
+
+    .nav-group-chevron {
+        font-size: 12px;
+        color: var(--text-4);
+        transition: transform 0.22s cubic-bezier(0.4,0,0.2,1), color 0.15s;
+        flex-shrink: 0;
+    }
+    .nav-group-header:hover .nav-group-chevron { color: var(--text-3); }
+
+    /* ── Collapsible content ── */
+    .nav-group-content {
+        overflow: hidden;
+        transition: max-height 0.28s cubic-bezier(0.4,0,0.2,1),
+                    opacity 0.22s ease;
+        max-height: 400px;
+        opacity: 1;
+    }
+    .nav-group.collapsed .nav-group-content {
+        max-height: 0;
+        opacity: 0;
+    }
+    .nav-group.collapsed .nav-group-chevron {
+        transform: rotate(-90deg);
+    }
+
+    /* ── Overview group has no collapse header ── */
+    .nav-group[data-group="overview"] .nav-group-header {
+        cursor: default;
+        pointer-events: none;
+    }
+    .nav-group[data-group="overview"] .nav-group-chevron {
+        display: none;
+    }
+
+    /* ── Active dot indicator (investigation running) ── */
+    .nav-item-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        margin-left: auto;
+        flex-shrink: 0;
+        animation: dotPulse 2s infinite;
+    }
+    .nav-item-dot.amber {
+        background: var(--amber);
+        box-shadow: 0 0 0 0 rgba(245,158,11,0.4);
+    }
+    @keyframes dotPulse {
+        0%   { box-shadow: 0 0 0 0 rgba(245,158,11,0.4); }
+        60%  { box-shadow: 0 0 0 5px rgba(245,158,11,0); }
+        100% { box-shadow: 0 0 0 0 rgba(245,158,11,0); }
+    }
+
+    /* ── Count badge on Datasets ── */
+    .nav-item-count-badge {
+        margin-left: auto;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 1px 6px;
+        border-radius: 10px;
+        background: var(--blue-mid);
+        color: var(--blue-text);
+        flex-shrink: 0;
+        line-height: 1.5;
+        transition: background 0.15s;
+    }
+    .nav-item.active .nav-item-count-badge {
+        background: rgba(37,99,235,0.15);
+        color: var(--blue-text);
+    }
+
+    /* ── Footer user area — subtle glass ── */
+    .sidebar-footer {
+        background: rgba(248,250,252,0.7);
+        backdrop-filter: blur(8px);
+    }
+    .sidebar-user {
+        transition: background 0.15s ease, transform 0.12s ease;
+    }
+    .sidebar-user:hover { transform: translateX(2px); }
+
+    /* ── Sign-out hover ── */
+    .nav-item--signout {
+        transition: color 0.15s, background 0.15s, transform 0.12s;
+    }
+    .nav-item--signout:not(:hover) { color: var(--text-3); }
+    .nav-item--signout:hover { transform: translateX(2px); }
+
+    /* ── Topbar glass ── */
+    .main-topbar {
+        background: rgba(255,255,255,0.90);
+        backdrop-filter: blur(12px) saturate(160%);
+        -webkit-backdrop-filter: blur(12px) saturate(160%);
+        border-bottom: 1px solid rgba(226,232,240,0.7);
+    }
+
+    /* ── Sidebar scroll — hide track on non-hover ── */
+    .sidebar::-webkit-scrollbar { width: 3px; }
+    .sidebar:not(:hover)::-webkit-scrollbar-thumb { background: transparent; }
+
+    /* ── Mobile overlay ── */
+    @media (max-width: 768px) {
+        .sidebar {
+            box-shadow: 4px 0 24px rgba(0,0,0,0.12);
+        }
+    }
+    </style>
+</head>
+<body>
+
+{% if show_nav %}
+<!-- ════════════════════════════════════════════
+     APP SHELL
+════════════════════════════════════════════ -->
+<div class="app-shell">
+
+    <!-- ── SIDEBAR ── -->
+    <aside class="sidebar" id="sidebar">
+
+        <!-- Brand -->
+        <div class="sidebar-header">
+            <a href="/dashboard" class="sidebar-brand">
+                <div class="sidebar-logo">A</div>
+                <div>
+                    <div class="sidebar-brand-text">ABIP</div>
+                    <span class="sidebar-brand-sub">Intelligence Platform</span>
+                </div>
+            </a>
+        </div>
+
+        <!-- Navigation -->
+        <nav class="sidebar-nav" id="sidebar-nav" aria-label="Main navigation" style="position:relative;">
+
+            <!-- Animated sliding indicator — positioned by JS -->
+            <div class="nav-indicator" id="nav-indicator"></div>
+
+            <!-- ── OVERVIEW ── -->
+            <div class="nav-group" data-group="overview">
+                <div class="nav-group-header">
+                    <div class="sidebar-section-label">Overview</div>
+                    <i class="ti ti-chevron-down nav-group-chevron" aria-hidden="true"></i>
+                </div>
+                <div class="nav-group-content">
+                    <a href="/dashboard"
+                       class="nav-item {% if active_page == 'dashboard' %}active{% endif %}"
+                       data-page="dashboard"
+                       aria-current="{% if active_page == 'dashboard' %}page{% endif %}">
+                        <i class="ti ti-layout-dashboard nav-item-icon" aria-hidden="true"></i>
+                        Dashboard
+                    </a>
+                </div>
+            </div>
+
+            <!-- ── DATA ── -->
+            <div class="nav-group" data-group="data">
+                <div class="nav-group-header" onclick="toggleNavGroup('data')">
+                    <div class="sidebar-section-label">Data</div>
+                    <i class="ti ti-chevron-down nav-group-chevron" aria-hidden="true"></i>
+                </div>
+                <div class="nav-group-content">
+                    <a href="/datasets"
+                       class="nav-item {% if active_page == 'datasets' %}active{% endif %}"
+                       data-page="datasets"
+                       aria-current="{% if active_page == 'datasets' %}page{% endif %}">
+                        <i class="ti ti-database nav-item-icon" aria-hidden="true"></i>
+                        Datasets
+                        <span class="nav-item-count-badge" id="nav-datasets-badge"></span>
+                    </a>
+
+                    <a href="/explorer"
+                       class="nav-item {% if active_page == 'explorer' %}active{% endif %}"
+                       data-page="explorer"
+                       aria-current="{% if active_page == 'explorer' %}page{% endif %}">
+                        <i class="ti ti-table nav-item-icon" aria-hidden="true"></i>
+                        Data Explorer
+                    </a>
+                </div>
+            </div>
+
+            <!-- ── INTELLIGENCE ── -->
+            <div class="nav-group" data-group="intelligence">
+                <div class="nav-group-header" onclick="toggleNavGroup('intelligence')">
+                    <div class="sidebar-section-label">Intelligence</div>
+                    <i class="ti ti-chevron-down nav-group-chevron" aria-hidden="true"></i>
+                </div>
+                <div class="nav-group-content">
+                    <a href="/insights"
+                       class="nav-item {% if active_page == 'insights' %}active{% endif %}"
+                       data-page="insights"
+                       aria-current="{% if active_page == 'insights' %}page{% endif %}">
+                        <i class="ti ti-bulb nav-item-icon" aria-hidden="true"></i>
+                        Advanced Insights
+                    </a>
+
+                    <a href="/nlp"
+                       class="nav-item {% if active_page == 'nlp' %}active{% endif %}"
+                       data-page="nlp"
+                       aria-current="{% if active_page == 'nlp' %}page{% endif %}">
+                        <i class="ti ti-message-bolt nav-item-icon" aria-hidden="true"></i>
+                        NLP Analysis
+                    </a>
+                </div>
+            </div>
+
+            <!-- ── WORKFLOWS ── -->
+            <div class="nav-group" data-group="workflows">
+                <div class="nav-group-header" onclick="toggleNavGroup('workflows')">
+                    <div class="sidebar-section-label">Workflows</div>
+                    <i class="ti ti-chevron-down nav-group-chevron" aria-hidden="true"></i>
+                </div>
+                <div class="nav-group-content">
+                    <a href="/chat"
+                       class="nav-item {% if active_page == 'chat' or active_page == 'investigation' %}active{% endif %}"
+                       data-page="chat"
+                       aria-current="{% if active_page == 'chat' or active_page == 'investigation' %}page{% endif %}">
+                        <i class="ti ti-search nav-item-icon" aria-hidden="true"></i>
+                        Investigations
+                        <span class="nav-item-dot amber" id="nav-investigations-dot" style="display:none;"
+                              title="Investigation running"></span>
+                    </a>
+                </div>
+            </div>
+
+            <!-- ── OUTPUTS ── -->
+            <div class="nav-group" data-group="outputs">
+                <div class="nav-group-header" onclick="toggleNavGroup('outputs')">
+                    <div class="sidebar-section-label">Outputs</div>
+                    <i class="ti ti-chevron-down nav-group-chevron" aria-hidden="true"></i>
+                </div>
+                <div class="nav-group-content">
+                    <a href="/reports"
+                       class="nav-item {% if active_page == 'reports' %}active{% endif %}"
+                       data-page="reports"
+                       aria-current="{% if active_page == 'reports' %}page{% endif %}">
+                        <i class="ti ti-file-description nav-item-icon" aria-hidden="true"></i>
+                        Reports
+                    </a>
+                </div>
+            </div>
+
+            <!-- ── SYSTEM ── -->
+            <div class="nav-group" data-group="system">
+                <div class="nav-group-header" onclick="toggleNavGroup('system')">
+                    <div class="sidebar-section-label">System</div>
+                    <i class="ti ti-chevron-down nav-group-chevron" aria-hidden="true"></i>
+                </div>
+                <div class="nav-group-content">
+                    <a href="/agents"
+                       class="nav-item {% if active_page == 'agents' %}active{% endif %}"
+                       data-page="agents"
+                       aria-current="{% if active_page == 'agents' %}page{% endif %}">
+                        <i class="ti ti-cpu nav-item-icon" aria-hidden="true"></i>
+                        Agents
+                    </a>
+
+                    <a href="/settings"
+                       class="nav-item {% if active_page == 'settings' %}active{% endif %}"
+                       data-page="settings"
+                       aria-current="{% if active_page == 'settings' %}page{% endif %}">
+                        <i class="ti ti-settings nav-item-icon" aria-hidden="true"></i>
+                        Settings
+                    </a>
+
+                    <button onclick="logout()"
+                            class="nav-item nav-item--signout w-full"
+                            aria-label="Sign out of ABIP">
+                        <i class="ti ti-logout nav-item-icon" aria-hidden="true"></i>
+                        Sign out
+                    </button>
+                </div>
+            </div>
+
+        </nav>
+
+        <!-- User footer -->
+        <div class="sidebar-footer">
+            <div class="sidebar-user">
+                <div class="user-avatar" id="sidebar-avatar">H</div>
+                <div class="user-info">
+                    <div class="user-name" id="sidebar-username">Loading...</div>
+                    <div class="user-role">Analyst</div>
+                </div>
+            </div>
+        </div>
+
+    </aside>
+
+    <!-- ── MAIN AREA ── -->
+    <div class="main-area">
+
+        <!-- Top bar -->
+        <header class="main-topbar">
+            <div class="topbar-left">
+
+                <!-- Mobile hamburger -->
+                <button class="btn btn-ghost btn-icon" id="sidebar-toggle"
+                        style="display:none;" aria-label="Toggle sidebar"
+                        onclick="document.getElementById('sidebar').classList.toggle('open')">
+                    <i class="ti ti-menu-2" aria-hidden="true"></i>
+                </button>
+
+                <!-- Breadcrumb -->
+                <nav class="topbar-breadcrumb" aria-label="Breadcrumb">
+                    <span>ABIP</span>
+                    <span class="topbar-breadcrumb-sep">›</span>
+                    <span class="topbar-breadcrumb-current">{% block breadcrumb %}Home{% endblock %}</span>
+                </nav>
+            </div>
+
+            <div class="topbar-right">
+                {% block topbar_actions %}{% endblock %}
+            </div>
+        </header>
+
+        <!-- Page content -->
+        <main class="main-content">
+            {% block content %}{% endblock %}
+        </main>
+
+    </div><!-- /.main-area -->
+
+</div><!-- /.app-shell -->
+
+{% else %}
+<!-- ════════════════════════════════════════════
+     Full-page layout (login / register)
+════════════════════════════════════════════ -->
+<main class="full-page">
+    {{ self.content() }}
+</main>
+{% endif %}
+
+<!-- ════════════════════════════════════════════
+     BASE SCRIPTS
+════════════════════════════════════════════ -->
+<script>
+/* ── Marked config ── */
+if (typeof marked !== 'undefined') {
+    marked.setOptions({ breaks: true, gfm: true });
+}
+
+/* ── Auth helpers ── */
+function getToken()  { return localStorage.getItem('token'); }
+function getUser()   { return JSON.parse(localStorage.getItem('user') || '{}'); }
+
+function saveToken(token, user) {
+    localStorage.setItem('token', token);
+    localStorage.setItem('user', JSON.stringify(user));
+}
+
+function logout() {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    window.location.href = '/auth/login';
+}
+
+function requireAuth() {
+    if (!getToken()) window.location.href = '/auth/login';
+}
+
+/* ── Universal fetch with auth ── */
+async function apiFetch(url, options = {}) {
+    const token = getToken();
+    const isFormData = options.body instanceof FormData;
+    const headers = {
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        ...(!isFormData ? { 'Content-Type': 'application/json' } : {}),
+        ...(options.headers || {})
+    };
+    const res = await fetch(url, { ...options, headers });
+    if (res.status === 401) { logout(); return null; }
+    return res;
+}
+
+/* ── Populate user info in sidebar ── */
+function loadSidebarUser() {
+    const user = getUser();
+    const nameEl   = document.getElementById('sidebar-username');
+    const avatarEl = document.getElementById('sidebar-avatar');
+    if (!nameEl) return;
+    if (user.name) {
+        nameEl.textContent   = user.name;
+        if (avatarEl) avatarEl.textContent = user.name.charAt(0).toUpperCase();
+    }
+}
+
+/* ═══════════════════════════════════════════════
+   UPGRADE 9 — PREMIUM NAVIGATION JS
+   All logic for indicator, collapse, persistence
+═══════════════════════════════════════════════ */
+
+/**
+ * positionNavIndicator()
+ * Finds the active .nav-item and slides the blue pill indicator
+ * to sit exactly behind it. Runs on load and on every toggle.
+ */
+function positionNavIndicator() {
+    const indicator = document.getElementById('nav-indicator');
+    const nav       = document.getElementById('sidebar-nav');
+    if (!indicator || !nav) return;
+
+    const activeItem = nav.querySelector('.nav-item.active');
+    if (!activeItem) {
+        indicator.classList.remove('visible');
+        return;
+    }
+
+    // Make sure the group containing the active item is expanded
+    const group = activeItem.closest('.nav-group');
+    if (group && group.classList.contains('collapsed')) {
+        group.classList.remove('collapsed');
+    }
+
+    // Position indicator relative to sidebar-nav
+    const navRect  = nav.getBoundingClientRect();
+    const itemRect = activeItem.getBoundingClientRect();
+    const top      = itemRect.top - navRect.top + nav.scrollTop;
+
+    indicator.style.top    = top + 'px';
+    indicator.style.height = itemRect.height + 'px';
+    indicator.classList.add('visible');
+}
+
+/**
+ * toggleNavGroup(groupKey)
+ * Collapses/expands a nav section; never collapses the group
+ * that contains the active page. Persists state in localStorage.
+ */
+function toggleNavGroup(groupKey) {
+    const group = document.querySelector(`.nav-group[data-group="${groupKey}"]`);
+    if (!group) return;
+
+    // Don't collapse a group that owns the active item
+    const hasActive = group.querySelector('.nav-item.active');
+    if (hasActive && !group.classList.contains('collapsed')) return;
+
+    group.classList.toggle('collapsed');
+
+    // Persist collapsed state
+    const collapsed = JSON.parse(localStorage.getItem('nav_collapsed') || '[]');
+    if (group.classList.contains('collapsed')) {
+        if (!collapsed.includes(groupKey)) collapsed.push(groupKey);
+    } else {
+        const idx = collapsed.indexOf(groupKey);
+        if (idx > -1) collapsed.splice(idx, 1);
+    }
+    localStorage.setItem('nav_collapsed', JSON.stringify(collapsed));
+
+    // Re-position indicator after collapse animation settles
+    setTimeout(positionNavIndicator, 300);
+}
+
+/**
+ * restoreNavGroups()
+ * Re-applies collapsed state from localStorage on page load.
+ * Active group is always forced open.
+ */
+function restoreNavGroups() {
+    const collapsed = JSON.parse(localStorage.getItem('nav_collapsed') || '[]');
+    const nav = document.getElementById('sidebar-nav');
+    if (!nav) return;
+
+    collapsed.forEach(key => {
+        const group = nav.querySelector(`.nav-group[data-group="${key}"]`);
+        if (group && !group.querySelector('.nav-item.active')) {
+            group.classList.add('collapsed');
+        }
+    });
+}
+
+/* ── Init nav on DOM ready ── */
+function initNav() {
+    restoreNavGroups();
+
+    // Slight delay so layout is painted before measuring positions
+    requestAnimationFrame(() => {
+        setTimeout(positionNavIndicator, 60);
+    });
+
+    // Re-position on sidebar scroll
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar) {
+        sidebar.addEventListener('scroll', () => {
+            requestAnimationFrame(positionNavIndicator);
+        });
+    }
+
+    // Re-position on window resize
+    window.addEventListener('resize', () => {
+        requestAnimationFrame(positionNavIndicator);
+    });
+}
+
+/* ── Toast notification ── */
+function showToast(message, type = 'info', duration = 4000) {
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.style.cssText = `
+            position: fixed; bottom: 24px; right: 24px;
+            z-index: 9999; display: flex; flex-direction: column; gap: 8px;
+        `;
+        document.body.appendChild(container);
+    }
+
+    const iconMap = {
+        success: 'ti-circle-check',
+        error:   'ti-circle-x',
+        warning: 'ti-alert-triangle',
+        info:    'ti-info-circle'
+    };
+    const colorMap  = { success:'var(--green-text)', error:'var(--red-text)', warning:'var(--amber-text)', info:'var(--blue)' };
+    const bgMap     = { success:'var(--green-light)', error:'var(--red-light)', warning:'var(--amber-light)', info:'var(--blue-light)' };
+    const borderMap = { success:'var(--green-mid)', error:'var(--red-mid)', warning:'var(--amber-mid)', info:'var(--blue-mid)' };
+
+    const toast = document.createElement('div');
+    toast.style.cssText = `
+        display: flex; align-items: center; gap: 10px;
+        padding: 12px 16px; border-radius: 10px;
+        background: ${bgMap[type]}; border: 1px solid ${borderMap[type]};
+        color: ${colorMap[type]}; font-size: 13px; font-weight: 500;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        animation: slideIn 0.25s ease; min-width: 260px; max-width: 380px;
+        font-family: 'Inter', sans-serif;
+    `;
+    toast.innerHTML = `
+        <i class="ti ${iconMap[type]}" style="font-size:16px;flex-shrink:0;" aria-hidden="true"></i>
+        <span style="flex:1;">${message}</span>
+        <button onclick="this.parentElement.remove()"
+                style="background:none;border:none;cursor:pointer;color:inherit;
+                       font-size:16px;padding:0;display:flex;align-items:center;"
+                aria-label="Dismiss">
+            <i class="ti ti-x" aria-hidden="true"></i>
+        </button>
+    `;
+    container.appendChild(toast);
+    setTimeout(() => toast.remove(), duration);
+}
+
+/* ── Confirm dialog ── */
+function showConfirm(message, onConfirm) {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+        position: fixed; inset: 0; background: rgba(0,0,0,0.35);
+        z-index: 9998; display: flex; align-items: center; justify-content: center;
+    `;
+    overlay.innerHTML = `
+        <div style="
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 14px; padding: 24px; max-width: 380px; width: 90%;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.12); font-family: 'Inter', sans-serif;
+        ">
+            <p style="font-size:14px;color:var(--text);margin-bottom:20px;line-height:1.6;">${message}</p>
+            <div style="display:flex;justify-content:flex-end;gap:8px;">
+                <button id="confirm-cancel" class="btn btn-secondary btn-sm">Cancel</button>
+                <button id="confirm-ok"     class="btn btn-danger btn-sm">Confirm</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#confirm-cancel').onclick = () => overlay.remove();
+    overlay.querySelector('#confirm-ok').onclick     = () => { overlay.remove(); onConfirm(); };
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+}
+
+/* ── Format helpers ── */
+function formatNumber(n)  { return new Intl.NumberFormat().format(n); }
+function formatDate(d)    { return new Date(d).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }); }
+function formatRelTime(d) {
+    const diff = Date.now() - new Date(d).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1)  return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24)  return `${hrs}h ago`;
+    return `${Math.floor(hrs / 24)}d ago`;
+}
+function formatFileSize(bytes) {
+    if (bytes < 1024)    return `${bytes} B`;
+    if (bytes < 1048576) return `${(bytes/1024).toFixed(1)} KB`;
+    return `${(bytes/1048576).toFixed(1)} MB`;
+}
+
+/* ── Mobile sidebar toggle visibility ── */
+function checkMobile() {
+    const toggle = document.getElementById('sidebar-toggle');
+    if (toggle) toggle.style.display = window.innerWidth <= 768 ? 'flex' : 'none';
+}
+
+/* ── Init ── */
+loadSidebarUser();
+checkMobile();
+initNav();
+window.addEventListener('resize', checkMobile);
+</script>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>
