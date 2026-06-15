@@ -4,3 +4,4 @@ gunicorn
 sqlalchemy
 alembic
 python-dotenv
+pydantic-settings
