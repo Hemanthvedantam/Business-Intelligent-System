@@ -289,4 +289,4 @@ Distributed under the MIT License. See [`LICENSE`](LICENSE) for details.
 <div align="center">
 <sub>Built with FastAPI · LangGraph · Groq · DuckDB</sub>
 </div>
-ENDOFFILE
+
